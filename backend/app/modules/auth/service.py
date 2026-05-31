@@ -1,3 +1,4 @@
+import json
 import secrets
 
 import jwt
@@ -21,6 +22,7 @@ from app.modules.users.models import OAuthAccount, User
 CODE_KEY = "emailcode:{email}"
 RESEND_KEY = "emailcode_sent:{email}"
 REFRESH_KEY = "refresh:{jti}"
+USER_SESSIONS_KEY = "user_sessions:{user_id}"
 
 
 def _generate_code() -> str:
@@ -101,13 +103,23 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
     return user
 
 
-async def issue_tokens(user: User) -> tuple[str, str]:
+async def issue_tokens(user: User, parent_jti: str | None = None) -> tuple[str, str]:
     """Return (access_token, refresh_token); refresh jti is allow-listed in Redis."""
     access = create_access_token(str(user.id))
     refresh, jti = create_refresh_token(str(user.id))
-    await get_redis().set(
-        REFRESH_KEY.format(jti=jti), str(user.id), ex=settings.refresh_token_ttl_seconds
+    redis = get_redis()
+    # Store token with its user_id and parent_jti (for family tracking)
+    user_id_str = str(user.id)
+    data = {"sub": user_id_str}
+    if parent_jti:
+        data["parent"] = parent_jti
+    await redis.set(
+        REFRESH_KEY.format(jti=jti), json.dumps(data), ex=settings.refresh_token_ttl_seconds
     )
+    # Add JTI to the user's active session set
+    res = redis.sadd(USER_SESSIONS_KEY.format(user_id=user_id_str), jti)
+    if not isinstance(res, int):
+        await res
     return access, refresh
 
 
@@ -122,16 +134,63 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
         payload = decode_token(refresh_token, "refresh")
     except jwt.PyJWTError as exc:
         raise _invalid_refresh from exc
+
     jti, sub = payload["jti"], payload["sub"]
     key = REFRESH_KEY.format(jti=jti)
-    stored = await redis.get(key)
-    if stored is None or stored != sub:
+    stored_raw = await redis.get(key)
+
+    if stored_raw is None:
+        # POTENTIAL THEFT: Token is not in the allowlist.
+        # Check if it's a known REUSED token (we mark them on rotation).
+        if await redis.exists(f"reused:{jti}"):
+            # Re-use detected! Revoke the whole family.
+            # In a real system, we'd follow the 'parent' chain or use a family_id.
+            # For this MVP, we'll revoke all refresh tokens for this user as a safety measure.
+            await _revoke_all_for_user(sub)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Security breach detected: refresh token reuse. All sessions revoked.",
+            )
         raise _invalid_refresh
-    await redis.delete(key)  # rotate: old token can't be reused
+
+    stored = json.loads(stored_raw)
+    if stored["sub"] != sub:
+        raise _invalid_refresh
+
+    # Mark this token as rotated/used for a short grace period to detect reuse.
+    await redis.delete(key)
+    res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
+    if not isinstance(res_srem, int):
+        await res_srem
+    await redis.set(f"reused:{jti}", "1", ex=3600)
+
     access = create_access_token(sub)
-    new_refresh, new_jti = create_refresh_token(sub)
-    await redis.set(REFRESH_KEY.format(jti=new_jti), sub, ex=settings.refresh_token_ttl_seconds)
+    new_refresh, new_jti = create_token_family_member(sub, jti)
+    # Re-issue tokens manually to link to parent_jti
+    data = {"sub": sub, "parent": jti}
+    await redis.set(
+        REFRESH_KEY.format(jti=new_jti), json.dumps(data), ex=settings.refresh_token_ttl_seconds
+    )
+    res_sadd = redis.sadd(USER_SESSIONS_KEY.format(user_id=sub), new_jti)
+    if not isinstance(res_sadd, int):
+        await res_sadd
     return access, new_refresh
+
+
+async def _revoke_all_for_user(user_id: str) -> None:
+    redis = get_redis()
+    sessions_key = USER_SESSIONS_KEY.format(user_id=user_id)
+    res_smembers = redis.smembers(sessions_key)
+    jtis = await res_smembers if not isinstance(res_smembers, set) else res_smembers
+    for jti in jtis:
+        await redis.delete(REFRESH_KEY.format(jti=jti))
+    await redis.delete(sessions_key)
+
+
+def create_token_family_member(subject: str, parent_jti: str) -> tuple[str, str]:
+    # We can reuse create_token but we don't strictly need parent_jti in the JWT itself
+    # as we track it in Redis. But having it in the JWT can help for stateless checks.
+    return create_refresh_token(subject)
 
 
 async def revoke_refresh(refresh_token: str) -> None:
@@ -139,7 +198,13 @@ async def revoke_refresh(refresh_token: str) -> None:
         payload = decode_token(refresh_token, "refresh")
     except jwt.PyJWTError:
         return
-    await get_redis().delete(REFRESH_KEY.format(jti=payload["jti"]))
+    jti = payload["jti"]
+    sub = payload["sub"]
+    redis = get_redis()
+    await redis.delete(REFRESH_KEY.format(jti=jti))
+    res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
+    if not isinstance(res_srem, int):
+        await res_srem
 
 
 async def get_or_create_oauth_user(
