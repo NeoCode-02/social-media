@@ -1,6 +1,9 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Check, CheckCheck, FileText } from 'lucide-react'
+import { Check, CheckCheck, FileText, Pencil, Trash2, X } from 'lucide-react'
+import { useState } from 'react'
 
+import { deleteMessage, editMessage } from '@/api/chats'
 import type { Message } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
 import { cn, formatBytes, formatTime, isImage } from '@/lib/utils'
@@ -10,94 +13,180 @@ interface Props {
   mine: boolean
   showSender: boolean
   status?: 'sent' | 'read'
+  chatId: string
 }
 
-export function MessageBubble({ message, mine, showSender, status }: Props) {
+export function MessageBubble({ message, mine, showSender, status, chatId }: Props) {
+  const qc = useQueryClient()
   const deleted = Boolean(message.deleted_at)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(message.content ?? '')
+  const [busy, setBusy] = useState(false)
+
+  const replace = (m: Message) =>
+    qc.setQueryData<Message[]>(['messages', chatId], (old) =>
+      old?.map((x) => (x.id === m.id ? m : x)),
+    )
+
+  async function saveEdit() {
+    const next = draft.trim()
+    if (!next || next === message.content) {
+      setEditing(false)
+      return
+    }
+    setBusy(true)
+    try {
+      const { data } = await editMessage(message.id, next)
+      replace(data)
+      setEditing(false)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function onDelete() {
+    setBusy(true)
+    try {
+      const { data } = await deleteMessage(message.id)
+      replace(data)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const canEditText = mine && !deleted && Boolean(message.content)
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-      className={cn('flex gap-2', mine ? 'justify-end' : 'justify-start')}
+      className={cn('group flex gap-2', mine ? 'justify-end' : 'justify-start')}
     >
       {!mine && (
         <div className="w-8 shrink-0 self-end">
-          {showSender && <Avatar name={message.sender.display_name} src={message.sender.avatar_url} size={32} />}
+          {showSender && (
+            <Avatar name={message.sender.display_name} src={message.sender.avatar_url} size={32} />
+          )}
         </div>
       )}
 
-      <div className={cn('max-w-[68%]', mine ? 'items-end' : 'items-start')}>
-        {!mine && showSender && (
-          <span className="mb-1 ml-1 block text-xs font-medium text-muted">
-            {message.sender.display_name}
-          </span>
+      <div className={cn('flex max-w-[68%] items-end gap-1', mine ? 'flex-row' : 'flex-row-reverse')}>
+        {mine && !deleted && !editing && (
+          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+            {canEditText && (
+              <button
+                onClick={() => {
+                  setDraft(message.content ?? '')
+                  setEditing(true)
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-text"
+                title="Edit"
+              >
+                <Pencil size={13} />
+              </button>
+            )}
+            <button
+              onClick={onDelete}
+              disabled={busy}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-danger"
+              title="Delete"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
         )}
-        <div
-          className={cn(
-            'rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-soft',
-            mine
-              ? 'rounded-br-md bg-accent text-accentink'
-              : 'rounded-bl-md bg-card text-text',
-          )}
-        >
-          {deleted ? (
-            <span className={cn('italic', mine ? 'text-accentink/70' : 'text-faint')}>
-              This message was deleted
+
+        <div className="min-w-0">
+          {!mine && showSender && (
+            <span className="mb-1 ml-1 block text-xs font-medium text-muted">
+              {message.sender.display_name}
             </span>
-          ) : (
-            <>
-              {message.attachments.length > 0 && (
-                <div className="mb-1 space-y-1.5">
-                  {message.attachments.map((a) =>
-                    isImage(a.mime) ? (
-                      <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block">
-                        <img
-                          src={a.thumbnail_url}
-                          alt={a.name}
-                          className="max-h-64 w-auto max-w-full rounded-xl object-cover"
-                        />
-                      </a>
-                    ) : (
-                      <a
-                        key={a.id}
-                        href={a.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={cn(
-                          'flex items-center gap-2 rounded-xl px-2 py-1.5',
-                          mine ? 'bg-black/10' : 'bg-black/25',
-                        )}
-                      >
-                        <FileText size={20} className="shrink-0" />
-                        <span className="min-w-0">
-                          <span className="block truncate text-xs font-medium">{a.name}</span>
-                          <span className="block text-[10px] opacity-70">{formatBytes(a.size)}</span>
-                        </span>
-                      </a>
-                    ),
-                  )}
-                </div>
-              )}
-              {message.content && (
-                <span className="whitespace-pre-wrap break-words">{message.content}</span>
-              )}
-            </>
           )}
-          <span
+          <div
             className={cn(
-              'ml-2 inline-flex translate-y-0.5 items-center gap-0.5 text-[10px]',
-              mine ? 'text-accentink/70' : 'text-faint',
+              'rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-soft',
+              mine ? 'rounded-br-md bg-accent text-accentink' : 'rounded-bl-md bg-card text-text',
             )}
           >
-            {message.edited_at && !deleted ? 'edited · ' : ''}
-            {formatTime(message.created_at)}
-            {mine &&
-              !deleted &&
-              status &&
-              (status === 'read' ? <CheckCheck size={13} /> : <Check size={13} />)}
-          </span>
+            {editing ? (
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveEdit()
+                    if (e.key === 'Escape') setEditing(false)
+                  }}
+                  className="w-56 rounded-lg bg-black/10 px-2 py-1 text-sm outline-none"
+                />
+                <button onClick={saveEdit} disabled={busy} title="Save">
+                  <Check size={16} />
+                </button>
+                <button onClick={() => setEditing(false)} title="Cancel">
+                  <X size={16} />
+                </button>
+              </div>
+            ) : deleted ? (
+              <span className={cn('italic', mine ? 'text-accentink/70' : 'text-faint')}>
+                This message was deleted
+              </span>
+            ) : (
+              <>
+                {message.attachments.length > 0 && (
+                  <div className="mb-1 space-y-1.5">
+                    {message.attachments.map((a) =>
+                      isImage(a.mime) ? (
+                        <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block">
+                          <img
+                            src={a.thumbnail_url}
+                            alt={a.name}
+                            className="max-h-64 w-auto max-w-full rounded-xl object-cover"
+                          />
+                        </a>
+                      ) : (
+                        <a
+                          key={a.id}
+                          href={a.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={cn(
+                            'flex items-center gap-2 rounded-xl px-2 py-1.5',
+                            mine ? 'bg-black/10' : 'bg-black/25',
+                          )}
+                        >
+                          <FileText size={20} className="shrink-0" />
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-medium">{a.name}</span>
+                            <span className="block text-[10px] opacity-70">{formatBytes(a.size)}</span>
+                          </span>
+                        </a>
+                      ),
+                    )}
+                  </div>
+                )}
+                {message.content && (
+                  <span className="whitespace-pre-wrap break-words">{message.content}</span>
+                )}
+              </>
+            )}
+            {!editing && (
+              <span
+                className={cn(
+                  'ml-2 inline-flex translate-y-0.5 items-center gap-0.5 text-[10px]',
+                  mine ? 'text-accentink/70' : 'text-faint',
+                )}
+              >
+                {message.edited_at && !deleted ? 'edited · ' : ''}
+                {formatTime(message.created_at)}
+                {mine &&
+                  !deleted &&
+                  status &&
+                  (status === 'read' ? <CheckCheck size={13} /> : <Check size={13} />)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </motion.div>
