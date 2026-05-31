@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion'
-import { Check, CheckCheck } from 'lucide-react'
+import { Check, CheckCheck, FileText } from 'lucide-react'
 
 import type { Message } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
-import { cn, formatTime } from '@/lib/utils'
+import { cn, formatBytes, formatTime, isImage } from '@/lib/utils'
 
 interface Props {
   message: Message
@@ -47,7 +47,43 @@ export function MessageBubble({ message, mine, showSender, status }: Props) {
               This message was deleted
             </span>
           ) : (
-            <span className="whitespace-pre-wrap break-words">{message.content}</span>
+            <>
+              {message.attachments.length > 0 && (
+                <div className="mb-1 space-y-1.5">
+                  {message.attachments.map((a) =>
+                    isImage(a.mime) ? (
+                      <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block">
+                        <img
+                          src={a.thumbnail_url}
+                          alt={a.name}
+                          className="max-h-64 w-auto max-w-full rounded-xl object-cover"
+                        />
+                      </a>
+                    ) : (
+                      <a
+                        key={a.id}
+                        href={a.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={cn(
+                          'flex items-center gap-2 rounded-xl px-2 py-1.5',
+                          mine ? 'bg-black/10' : 'bg-black/25',
+                        )}
+                      >
+                        <FileText size={20} className="shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-medium">{a.name}</span>
+                          <span className="block text-[10px] opacity-70">{formatBytes(a.size)}</span>
+                        </span>
+                      </a>
+                    ),
+                  )}
+                </div>
+              )}
+              {message.content && (
+                <span className="whitespace-pre-wrap break-words">{message.content}</span>
+              )}
+            </>
           )}
           <span
             className={cn(

@@ -4,8 +4,9 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.db import Base, Timestamped
+from app.core.db import Base, Timestamped, UUIDPrimaryKey
 from app.core.ids import uuid7
+from app.core.storage import public_url
 from app.modules.users.models import User
 
 # Message content types
@@ -39,3 +40,38 @@ class Message(Timestamped, Base):
     )
 
     sender: Mapped[User] = relationship(lazy="selectin")
+    attachments: Mapped[list["Attachment"]] = relationship(
+        lazy="selectin",
+        foreign_keys="Attachment.message_id",
+        cascade="all, delete-orphan",
+    )
+
+
+class Attachment(UUIDPrimaryKey, Timestamped, Base):
+    __tablename__ = "attachments"
+
+    # NULL until the message that owns it is sent (upload happens first).
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("messages.id", ondelete="CASCADE"), index=True, default=None
+    )
+    chat_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("chats.id", ondelete="CASCADE"), index=True
+    )
+    uploader_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE")
+    )
+    storage_key: Mapped[str] = mapped_column(sa.String(512))
+    thumbnail_key: Mapped[str | None] = mapped_column(sa.String(512), default=None)
+    mime: Mapped[str] = mapped_column(sa.String(128))
+    name: Mapped[str] = mapped_column(sa.String(255))
+    size: Mapped[int] = mapped_column(sa.BigInteger)
+    width: Mapped[int | None] = mapped_column(sa.Integer, default=None)
+    height: Mapped[int | None] = mapped_column(sa.Integer, default=None)
+
+    @property
+    def url(self) -> str:
+        return public_url(self.storage_key)
+
+    @property
+    def thumbnail_url(self) -> str:
+        return public_url(self.thumbnail_key or self.storage_key)

@@ -11,6 +11,17 @@ export interface UserMe extends UserPublic {
   created_at: string
 }
 
+export interface Attachment {
+  id: string
+  url: string
+  thumbnail_url: string
+  mime: string
+  name: string
+  size: number
+  width: number | null
+  height: number | null
+}
+
 export interface Message {
   id: string
   chat_id: string
@@ -22,6 +33,7 @@ export interface Message {
   edited_at: string | null
   deleted_at: string | null
   sender: UserPublic
+  attachments: Attachment[]
 }
 
 export interface ChatMember {
