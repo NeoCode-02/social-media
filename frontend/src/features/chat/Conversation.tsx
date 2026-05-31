@@ -1,10 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence } from 'framer-motion'
 import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { getChat, markRead } from '@/api/chats'
-import type { Message } from '@/api/types'
+import type { Chat, Message } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
 import { FullScreenLoader } from '@/components/FullScreenLoader'
 import { chatFace, formatDayLabel } from '@/lib/utils'
@@ -17,11 +17,19 @@ import { useMessages } from './useMessages'
 
 type Row =
   | { kind: 'day'; key: string; label: string }
-  | { kind: 'msg'; key: string; message: Message; mine: boolean; showSender: boolean }
+  | {
+      kind: 'msg'
+      key: string
+      message: Message
+      mine: boolean
+      showSender: boolean
+      status?: 'sent' | 'read'
+    }
 
 export function Conversation() {
   const { chatId = '' } = useParams()
   const me = useAuth((s) => s.user)
+  const qc = useQueryClient()
   const { data: chat } = useQuery({
     queryKey: ['chat', chatId],
     queryFn: async () => (await getChat(chatId)).data,
@@ -50,11 +58,28 @@ export function Conversation() {
   }, [messages])
 
   useEffect(() => {
+    // Clear this chat's sidebar unread badge immediately.
+    qc.setQueryData<Chat[]>(['chats'], (chats) =>
+      chats?.map((c) => (c.id === chatId ? { ...c, unread_count: 0 } : c)),
+    )
     const last = messages[messages.length - 1]
-    if (last && last.sender_id !== me?.id) markRead(chatId, last.id).catch(() => {})
-  }, [messages, chatId, me?.id])
+    if (last && last.sender_id !== me?.id) {
+      markRead(chatId, last.id)
+        .then(() => qc.invalidateQueries({ queryKey: ['chats'] }))
+        .catch(() => {})
+    }
+  }, [messages, chatId, me?.id, qc])
 
   if (!chat || !face) return <FullScreenLoader />
+
+  // How far the *other* participants have read (all must have read for a tick).
+  const otherReads = chat.members
+    .filter((m) => m.user.id !== me?.id)
+    .map((m) => m.last_read_message_id)
+  const readUpTo =
+    otherReads.length > 0 && otherReads.every(Boolean)
+      ? (otherReads as string[]).reduce((a, b) => (a < b ? a : b))
+      : undefined
 
   const rows: Row[] = []
   let lastDay = ''
@@ -67,7 +92,14 @@ export function Conversation() {
       prevSender = undefined
     }
     const mine = m.sender_id === me?.id
-    rows.push({ kind: 'msg', key: m.id, message: m, mine, showSender: !mine && prevSender !== m.sender_id })
+    rows.push({
+      kind: 'msg',
+      key: m.id,
+      message: m,
+      mine,
+      showSender: !mine && prevSender !== m.sender_id,
+      status: mine ? (readUpTo && m.id <= readUpTo ? 'read' : 'sent') : undefined,
+    })
     prevSender = m.sender_id
   }
 
@@ -122,6 +154,7 @@ export function Conversation() {
                 message={row.message}
                 mine={row.mine}
                 showSender={row.showSender}
+                status={row.status}
               />
             ),
           )
