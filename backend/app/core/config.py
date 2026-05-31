@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
 
     # Postgres
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/social_media"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/social_media"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
