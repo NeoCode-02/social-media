@@ -1,5 +1,6 @@
 import uuid
 
+import sqlalchemy as sa
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -115,18 +116,40 @@ async def _unread_count(
     return await db.scalar(q) or 0
 
 
-async def build_chat_read(db: AsyncSession, chat: Chat, member: ChatMember) -> ChatRead:
-    # Load members (+ their user) explicitly so the response never depends on
-    # the lazy state of chat.members after inserts/refreshes.
-    members = (
-        await db.scalars(
-            select(ChatMember)
-            .where(ChatMember.chat_id == chat.id)
-            .options(selectinload(ChatMember.user))
-        )
-    ).all()
-    last = await _last_message(db, chat.id)
-    unread = await _unread_count(db, chat.id, member.user_id, member.last_read_message_id)
+async def build_chat_read(
+    db: AsyncSession,
+    chat: Chat,
+    member: ChatMember,
+    *,
+    last_message: Message | None = None,
+    unread_count: int | None = None,
+) -> ChatRead:
+    # Use already-loaded members if available (selectinload), otherwise fetch.
+    # In list_chats, they are pre-loaded.
+    # We use a explicit check for the loaded state to avoid greenlet errors in Pydantic.
+    inspect = sa.inspect(chat)
+    if "members" in inspect.unloaded:
+        members = (
+            await db.scalars(
+                select(ChatMember)
+                .where(ChatMember.chat_id == chat.id)
+                .options(selectinload(ChatMember.user))
+            )
+        ).all()
+    else:
+        members = chat.members
+        # Even if members are loaded, their user relation might not be.
+        for m in members:
+            m_inspect = sa.inspect(m)
+            if "user" in m_inspect.unloaded:
+                await db.refresh(m, ["user"])
+
+    last = last_message if last_message is not None else await _last_message(db, chat.id)
+    if unread_count is not None:
+        unread = unread_count
+    else:
+        unread = await _unread_count(db, chat.id, member.user_id, member.last_read_message_id)
+
     return ChatRead(
         id=chat.id,
         type=chat.type,
@@ -140,14 +163,76 @@ async def build_chat_read(db: AsyncSession, chat: Chat, member: ChatMember) -> C
 
 
 async def list_chats(db: AsyncSession, user: User) -> list[ChatRead]:
-    memberships = (
-        await db.scalars(select(ChatMember).where(ChatMember.user_id == user.id))
-    ).all()
+    # 1. Fetch chats the user belongs to, pre-loading all members + users.
+    # We join with ChatMember to filter by user.id.
+    stmt = (
+        select(Chat, ChatMember)
+        .join(ChatMember, ChatMember.chat_id == Chat.id)
+        .where(ChatMember.user_id == user.id)
+        .options(selectinload(Chat.members).selectinload(ChatMember.user))
+    )
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return []
+
+    chats = [r[0] for r in rows]
+    my_memberships = {r[1].chat_id: r[1] for r in rows}
+    chat_ids = list(my_memberships.keys())
+
+    # 2. Fetch last messages for all these chats in one batch.
+    # We use a subquery with ROW_NUMBER() to get the latest message per chat.
+    msg_sub = (
+        select(
+            Message,
+            func.row_number()
+            .over(partition_by=Message.chat_id, order_by=Message.id.desc())
+            .label("rn"),
+        )
+        .where(Message.chat_id.in_(chat_ids))
+        .where(Message.deleted_at.is_(None))
+    ).subquery()
+    # selectinload(Message.sender) to avoid N+1 when validating MessageRead
+    last_msgs_stmt = (
+        select(Message)
+        .where(Message.id.in_(select(msg_sub.c.id).where(msg_sub.c.rn == 1)))
+        .options(selectinload(Message.sender))
+    )
+    last_msgs = (await db.scalars(last_msgs_stmt)).all()
+    last_msg_map = {m.chat_id: m for m in last_msgs}
+
+    # 3. Fetch unread counts in one batch.
+    unread_stmt = (
+        select(ChatMember.chat_id, func.count(Message.id))
+        .join(Message, Message.chat_id == ChatMember.chat_id)
+        .where(ChatMember.user_id == user.id)
+        .where(ChatMember.chat_id.in_(chat_ids))
+        .where(Message.sender_id != user.id)
+        .where(Message.deleted_at.is_(None))
+        .where(
+            sa.or_(
+                ChatMember.last_read_message_id.is_(None),
+                Message.id > ChatMember.last_read_message_id,
+            )
+        )
+        .group_by(ChatMember.chat_id)
+    )
+    unread_rows = (await db.execute(unread_stmt)).all()
+    unread_map = {chat_id: count for chat_id, count in unread_rows}
+
+    # 4. Build results.
     result: list[ChatRead] = []
-    for member in memberships:
-        chat = await db.get(Chat, member.chat_id)
-        if chat is not None:
-            result.append(await build_chat_read(db, chat, member))
+    for chat in chats:
+        member = my_memberships[chat.id]
+        result.append(
+            await build_chat_read(
+                db,
+                chat,
+                member,
+                last_message=last_msg_map.get(chat.id),
+                unread_count=unread_map.get(chat.id, 0),
+            )
+        )
+
     # Most recent activity first.
     result.sort(
         key=lambda c: c.last_message.created_at if c.last_message else c.created_at,

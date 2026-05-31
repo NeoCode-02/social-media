@@ -14,10 +14,16 @@ export const createGroup = (title: string, memberIds: string[]) =>
 export const listMessages = (chatId: string, before?: string) =>
   api.get<MessagePage>(`/chats/${chatId}/messages`, { params: { before, limit: 30 } })
 
-export const sendMessage = (chatId: string, content?: string, attachmentIds?: string[]) =>
+export const sendMessage = (
+  chatId: string,
+  content?: string,
+  attachmentIds?: string[],
+  replyToId?: string,
+) =>
   api.post<Message>(`/chats/${chatId}/messages`, {
     content: content || null,
     attachment_ids: attachmentIds,
+    reply_to_id: replyToId,
   })
 
 export const uploadAttachment = (chatId: string, file: File) => {
