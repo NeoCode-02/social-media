@@ -79,8 +79,14 @@ Mailpit UI (http://localhost:8025).
 | POST   | `/api/chats/{id}/messages`        | send a text message                       |
 | PATCH  | `/api/messages/{id}`              | edit your message                         |
 | DELETE | `/api/messages/{id}`              | soft-delete your message                  |
+| POST   | `/api/chats/{id}/attachments`     | upload media (`as_file`/`is_voice`/`duration_ms`) |
+| GET    | `/api/chats/{id}/attachments/{aid}/download-url` | signed link that forces a download |
+| GET    | `/api/users/{id}`                 | another user's public profile (bio, etc.) |
 
-DMs and groups only (channels are deferred). Messages use time-ordered **UUIDv7**
+Attachments cover images, video, audio, voice notes, and documents (≤15 MB). Images
+open in an in-app lightbox; video/audio play inline; voice notes use a compact player;
+anything else renders as a downloadable card. `as_file` forces the file card even for
+images. DMs and groups only (channels are deferred). Messages use time-ordered **UUIDv7**
 ids, so the id is also the chronological cursor; pagination and unread counts compare
 ids directly. All chat endpoints require a verified email.
 
@@ -128,7 +134,9 @@ cd frontend && npm run lint && npm run typecheck && npm run test && npm run buil
 - **M5** Hardening (rate limits, structured logging + request IDs, security headers) ✅
 
 Plus a full **React SPA** ("Pulse"): auth, chat list, live conversation (typing,
-presence, read receipts), media, message edit/delete, profile editor.
+presence, read receipts), rich media (image lightbox, inline video/audio, voice
+recording, file downloads), message edit/delete/reply, viewable user profiles with
+bio/location/website, and a profile editor with avatar cropping.
 
 ## Hardening (M5)
 

@@ -12,6 +12,9 @@ from app.modules.users.models import User
 # Message content types
 MSG_TEXT = "text"
 MSG_IMAGE = "image"
+MSG_VIDEO = "video"
+MSG_AUDIO = "audio"
+MSG_VOICE = "voice"
 MSG_FILE = "file"
 
 
@@ -67,6 +70,12 @@ class Attachment(UUIDPrimaryKey, Timestamped, Base):
     size: Mapped[int] = mapped_column(sa.BigInteger)
     width: Mapped[int | None] = mapped_column(sa.Integer, default=None)
     height: Mapped[int | None] = mapped_column(sa.Integer, default=None)
+    # Audio/video length in milliseconds (client-reported).
+    duration_ms: Mapped[int | None] = mapped_column(sa.Integer, default=None)
+    # Force render as a downloadable file card even for images.
+    as_file: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+    # Recorded voice note (compact inline player) vs an uploaded audio file.
+    is_voice: Mapped[bool] = mapped_column(sa.Boolean, default=False)
 
     @property
     def url(self) -> str:
