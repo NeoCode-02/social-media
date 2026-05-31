@@ -57,8 +57,12 @@ class Attachment(UUIDPrimaryKey, Timestamped, Base):
     message_id: Mapped[uuid.UUID | None] = mapped_column(
         sa.ForeignKey("messages.id", ondelete="CASCADE"), index=True, default=None
     )
-    chat_id: Mapped[uuid.UUID] = mapped_column(
-        sa.ForeignKey("chats.id", ondelete="CASCADE"), index=True
+    # An attachment belongs to either a chat message or a feed post.
+    chat_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("chats.id", ondelete="CASCADE"), index=True, default=None
+    )
+    post_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("posts.id", ondelete="CASCADE"), index=True, default=None
     )
     uploader_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("users.id", ondelete="CASCADE")
