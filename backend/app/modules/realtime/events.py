@@ -36,8 +36,11 @@ async def _co_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid.UUID]
 
 
 async def _publish(recipients: list[uuid.UUID], event: dict[str, Any]) -> None:
-    payload = {"recipients": [str(u) for u in recipients], "event": event}
-    await get_redis().publish(CHANNEL, json.dumps(payload))
+    from app.core.redis import get_redis
+    redis = get_redis()
+    event_json = json.dumps(event)
+    for user_id in recipients:
+        await redis.publish(f"user:{user_id}", event_json)
 
 
 async def publish_message_new(db: AsyncSession, chat_id: uuid.UUID, message: MessageRead) -> None:
