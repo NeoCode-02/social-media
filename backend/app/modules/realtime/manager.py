@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import uuid
 from collections.abc import Iterable
 from typing import Any
@@ -8,6 +9,8 @@ from fastapi import WebSocket
 
 from app.core.redis import get_redis
 from app.modules.realtime.events import CHANNEL
+
+_logger = logging.getLogger("app.realtime")
 
 
 class ConnectionManager:
@@ -50,20 +53,29 @@ manager = ConnectionManager()
 async def pubsub_listener() -> None:
     """Subscribe to the Redis channel and fan events out to local sockets.
 
-    Started once per process from the app lifespan.
+    Started once per process from the app lifespan. Resilient to Redis being
+    unavailable: it reconnects with backoff and only stops on cancellation, so
+    a missing/blipping Redis never crashes the app (e.g. CI without Redis).
     """
-    pubsub = get_redis().pubsub()
-    await pubsub.subscribe(CHANNEL)
-    try:
-        async for message in pubsub.listen():
-            if message.get("type") != "message":
-                continue
+    while True:
+        pubsub = get_redis().pubsub()
+        try:
+            await pubsub.subscribe(CHANNEL)
+            async for message in pubsub.listen():
+                if message.get("type") != "message":
+                    continue
+                try:
+                    data = json.loads(message["data"])
+                    await manager.deliver(data["recipients"], data["event"])
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _logger.warning("pubsub listener error; reconnecting", exc_info=True)
+            await asyncio.sleep(2)
+        finally:
             try:
-                data = json.loads(message["data"])
-                await manager.deliver(data["recipients"], data["event"])
-            except (json.JSONDecodeError, KeyError):
-                continue
-    except asyncio.CancelledError:
-        raise
-    finally:
-        await pubsub.aclose()
+                await pubsub.aclose()
+            except Exception:
+                pass
