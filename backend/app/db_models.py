@@ -6,4 +6,5 @@ autogenerate. Add new model modules here as milestones land, e.g.::
     from app.modules.users import models as user_models  # noqa: F401
     from app.modules.chats import models as chat_models   # noqa: F401
 """
-# (no models yet — M0 scaffold)
+
+from app.modules.users import models as user_models  # noqa: F401

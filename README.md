@@ -39,6 +39,32 @@ uv run uvicorn app.main:app --reload
 # health: http://localhost:8000/api/health
 ```
 
+In a second terminal, run the background worker (sends verification emails, etc.):
+
+```bash
+cd backend && uv run arq app.worker.WorkerSettings
+```
+
+#### Auth API (M1)
+
+| Method | Path                       | Purpose                                  |
+| ------ | -------------------------- | ---------------------------------------- |
+| POST   | `/api/auth/register`       | email + password; emails a 6-digit code  |
+| POST   | `/api/auth/verify-email`   | confirm code → access token + refresh cookie |
+| POST   | `/api/auth/resend-code`    | re-send verification code                |
+| POST   | `/api/auth/login`          | password login (requires verified email) |
+| POST   | `/api/auth/refresh`        | rotate refresh cookie → new access token |
+| POST   | `/api/auth/logout`         | revoke refresh token                     |
+| GET    | `/api/auth/google/login`   | Google OAuth (needs client id/secret)    |
+| GET    | `/api/users/me`            | current profile (Bearer access token)    |
+| PATCH  | `/api/users/me`            | update display name / avatar             |
+| POST   | `/api/users/me/avatar-url` | presigned MinIO URL for direct upload    |
+
+Access token (15 min) goes in the `Authorization: Bearer` header; the refresh token
+(30 days, rotating) lives in an httpOnly cookie scoped to `/api/auth`. Verification
+codes and the refresh-token allowlist live in Redis. Read the codes in dev from the
+Mailpit UI (http://localhost:8025).
+
 ### 3. Frontend
 
 ```bash
@@ -59,7 +85,7 @@ cd frontend && npm run lint && npm run typecheck && npm run test && npm run buil
 ## Roadmap (MVP = Telegram half)
 
 - **M0** Scaffold & infra ✅
-- **M1** Auth & users (email+password JWT, 6-digit verify, Google OAuth, avatars)
+- **M1** Auth & users (email+password JWT, 6-digit verify, Google OAuth, avatars) ✅
 - **M2** Chats & messages (DM/group, REST, cursor pagination, read receipts)
 - **M3** Realtime (WebSocket + Redis pub/sub: live messages, typing, presence)
 - **M4** Media in chat (presigned upload, thumbnails)

@@ -2,10 +2,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import settings
+from app.core.queue import close_arq_pool
 from app.core.redis import close_redis
+from app.modules.auth.router import router as auth_router
 from app.modules.health.router import router as health_router
+from app.modules.users.router import router as users_router
 
 
 @asynccontextmanager
@@ -14,6 +18,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     await close_redis()
+    await close_arq_pool()
 
 
 def create_app() -> FastAPI:
@@ -30,8 +35,16 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Required by Authlib to persist OAuth state across the redirect.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        same_site="lax",
+        https_only=settings.cookie_secure,
+    )
 
-    app.include_router(health_router, prefix=settings.api_prefix)
+    for module_router in (health_router, auth_router, users_router):
+        app.include_router(module_router, prefix=settings.api_prefix)
     return app
 
 
