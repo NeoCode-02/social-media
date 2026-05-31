@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import anyio
@@ -5,10 +6,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.deps import get_current_user, get_current_verified_user
+from app.core.images import make_thumbnail
 from app.core.rate_limit import rate_limit
-from app.core.storage import presigned_put_url, public_url, put_object
+from app.core.storage import delete_object, presigned_put_url, public_url, put_object
 from app.modules.follows import service as follows_service
 from app.modules.posts import service as posts_service
 from app.modules.users.models import User
@@ -28,15 +31,21 @@ MAX_AVATAR_BYTES = 25 * 1024 * 1024
 
 async def _social(db: AsyncSession, target: User, viewer: User) -> dict[str, int | bool]:
     """Followers/following/posts counts + whether viewer follows target."""
-    return {
-        "followers_count": await follows_service.followers_count(db, target.id),
-        "following_count": await follows_service.following_count(db, target.id),
-        "posts_count": await posts_service.posts_count(db, target.id),
-        "is_following": (
-            False
-            if viewer.id == target.id
-            else await follows_service.is_following(db, viewer.id, target.id)
+    followers, following, posts, is_following = await asyncio.gather(
+        follows_service.followers_count(db, target.id),
+        follows_service.following_count(db, target.id),
+        posts_service.posts_count(db, target.id),
+        (
+            follows_service.is_following(db, viewer.id, target.id)
+            if viewer.id != target.id
+            else asyncio.sleep(0, result=False)
         ),
+    )
+    return {
+        "followers_count": followers,
+        "following_count": following,
+        "posts_count": posts,
+        "is_following": is_following,
     }
 
 _EXT = {
@@ -115,20 +124,40 @@ async def create_avatar_upload_url(
     )
 
 
+def _process_avatar(data: bytes, old_url: str | None) -> str:
+    """Thumbnailing + cleanup of old avatar (if applicable)."""
+    thumb = make_thumbnail(data)
+    if not thumb:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid image data")
+
+    # Cleanup old avatar if it's in our S3 bucket.
+    if old_url:
+        prefix = f"{settings.s3_public_url}/{settings.s3_bucket}/"
+        if old_url.startswith(prefix):
+            try:
+                delete_object(old_url.removeprefix(prefix))
+            except Exception:
+                pass  # best effort cleanup
+
+    key = f"avatars/{uuid.uuid4().hex}.jpg"
+    put_object(key, thumb, "image/jpeg")
+    return public_url(key)
+
+
 @router.post("/me/avatar", response_model=UserMe)
 async def upload_avatar(
     file: UploadFile = File(...),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> User:
+) -> UserMe:
     if file.content_type not in _EXT:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported image type")
     data = await file.read()
     if len(data) > MAX_AVATAR_BYTES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (max 25MB)")
-    key = f"avatars/{user.id}/{uuid.uuid4().hex}.{_EXT[file.content_type]}"
-    await anyio.to_thread.run_sync(put_object, key, data, file.content_type)
-    user.avatar_url = public_url(key)
+
+    new_url = await anyio.to_thread.run_sync(_process_avatar, data, user.avatar_url)
+    user.avatar_url = new_url
     await db.commit()
     await db.refresh(user)
-    return user
+    return UserMe.model_validate(user).model_copy(update=await _social(db, user, user))

@@ -36,11 +36,18 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
 
   function onCropped(cropped: File) {
     setFile(cropped)
+    if (preview && preview.startsWith('blob:')) {
+      URL.revokeObjectURL(preview)
+    }
     setPreview(URL.createObjectURL(cropped))
-    setCropSrc(null)
+    if (cropSrc) {
+      URL.revokeObjectURL(cropSrc)
+      setCropSrc(null)
+    }
   }
 
   async function onSave() {
+    if (!user) return
     setBusy(true)
     setError('')
     try {
@@ -49,17 +56,25 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
 
       const patch: ProfileUpdate = {}
       const dn = name.trim()
-      if (dn && dn !== user?.display_name) patch.display_name = dn
+      if (dn && dn !== user.display_name) patch.display_name = dn
       const nb = bio.trim() || null
-      if (nb !== (user?.bio ?? null)) patch.bio = nb
+      if (nb !== (user.bio ?? null)) patch.bio = nb
       const nl = location.trim() || null
-      if (nl !== (user?.location ?? null)) patch.location = nl
+      if (nl !== (user.location ?? null)) patch.location = nl
       const nw = website.trim() || null
-      if (nw !== (user?.website ?? null)) patch.website = nw
-      if (Object.keys(patch).length) updated = (await updateMe(patch)).data
+      if (nw !== (user.website ?? null)) patch.website = nw
 
-      if (updated) setUser(updated)
-      await qc.invalidateQueries({ queryKey: ['chats'] })
+      if (Object.keys(patch).length) {
+        updated = (await updateMe(patch)).data
+      }
+
+      setUser(updated)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['user', user.id] }),
+        qc.invalidateQueries({ queryKey: ['chats'] }),
+      ])
+
+      if (preview && preview.startsWith('blob:')) URL.revokeObjectURL(preview)
       onClose()
     } catch (err) {
       setError(apiError(err))
@@ -68,12 +83,18 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const handleClose = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc)
+    if (preview && preview.startsWith('blob:')) URL.revokeObjectURL(preview)
+    onClose()
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      onClick={onClose}
+      onClick={handleClose}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
     >
       <motion.div
@@ -86,7 +107,7 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-base font-semibold">Edit profile</h2>
-          <button onClick={onClose} className="text-muted transition hover:text-text">
+          <button onClick={handleClose} className="text-muted transition hover:text-text">
             <X size={18} />
           </button>
         </div>
@@ -147,7 +168,7 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 
         <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" type="button" onClick={onClose}>
+          <Button variant="ghost" type="button" onClick={handleClose}>
             Cancel
           </Button>
           <Button onClick={onSave} loading={busy}>
@@ -158,7 +179,14 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
 
       <AnimatePresence>
         {cropSrc && (
-          <AvatarCropper src={cropSrc} onCancel={() => setCropSrc(null)} onDone={onCropped} />
+          <AvatarCropper
+            src={cropSrc}
+            onCancel={() => {
+              URL.revokeObjectURL(cropSrc)
+              setCropSrc(null)
+            }}
+            onDone={onCropped}
+          />
         )}
       </AnimatePresence>
     </motion.div>
