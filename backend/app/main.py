@@ -8,7 +8,9 @@ from app.core.config import settings
 from app.core.queue import close_arq_pool
 from app.core.redis import close_redis
 from app.modules.auth.router import router as auth_router
+from app.modules.chats.router import router as chats_router
 from app.modules.health.router import router as health_router
+from app.modules.messages.router import router as messages_router
 from app.modules.users.router import router as users_router
 
 
@@ -43,7 +45,13 @@ def create_app() -> FastAPI:
         https_only=settings.cookie_secure,
     )
 
-    for module_router in (health_router, auth_router, users_router):
+    for module_router in (
+        health_router,
+        auth_router,
+        users_router,
+        chats_router,
+        messages_router,
+    ):
         app.include_router(module_router, prefix=settings.api_prefix)
     return app
 
