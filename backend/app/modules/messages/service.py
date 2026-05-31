@@ -8,7 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.images import image_dimensions, make_thumbnail
 from app.core.storage import put_object
-from app.modules.messages.models import MSG_FILE, MSG_IMAGE, MSG_TEXT, Attachment, Message
+from app.modules.messages.models import (
+    MSG_AUDIO,
+    MSG_FILE,
+    MSG_IMAGE,
+    MSG_TEXT,
+    MSG_VIDEO,
+    MSG_VOICE,
+    Attachment,
+    Message,
+)
 from app.modules.messages.schemas import MessageCreate, MessagePage, MessageRead
 from app.modules.users.models import User
 
@@ -20,13 +29,16 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def process_blob(chat_id: uuid.UUID, data: bytes, mime: str) -> dict[str, Any]:
+def process_blob(
+    chat_id: uuid.UUID, data: bytes, mime: str, as_file: bool = False
+) -> dict[str, Any]:
     """Sync (CPU + network) blob work — call via a thread. Stores original +
-    thumbnail and returns storage metadata."""
+    (for inline images) a thumbnail and returns storage metadata. When as_file
+    is set the blob is treated as a plain download — no thumbnail/dimensions."""
     key = f"chat/{chat_id}/{uuid.uuid4().hex}"
     width = height = None
     thumb_key = None
-    if mime.startswith("image/"):
+    if mime.startswith("image/") and not as_file:
         dims = image_dimensions(data)
         if dims:
             width, height = dims
@@ -46,6 +58,10 @@ async def record_attachment(
     mime: str,
     size: int,
     meta: dict[str, Any],
+    *,
+    as_file: bool = False,
+    is_voice: bool = False,
+    duration_ms: int | None = None,
 ) -> Attachment:
     attachment = Attachment(
         chat_id=chat_id,
@@ -57,11 +73,32 @@ async def record_attachment(
         thumbnail_key=meta["thumbnail_key"],
         width=meta["width"],
         height=meta["height"],
+        as_file=as_file,
+        is_voice=is_voice,
+        duration_ms=duration_ms,
     )
     db.add(attachment)
     await db.commit()
     await db.refresh(attachment)
     return attachment
+
+
+def _derive_type(attachments: list[Attachment]) -> str:
+    """Message type hint from its attachments (first one wins for the icon)."""
+    if not attachments:
+        return MSG_TEXT
+    att = attachments[0]
+    if att.is_voice:
+        return MSG_VOICE
+    if att.as_file:
+        return MSG_FILE
+    if att.mime.startswith("image/"):
+        return MSG_IMAGE
+    if att.mime.startswith("video/"):
+        return MSG_VIDEO
+    if att.mime.startswith("audio/"):
+        return MSG_AUDIO
+    return MSG_FILE
 
 
 async def list_messages(
@@ -111,9 +148,7 @@ async def create_message(
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid attachment")
             attachments.append(att)
 
-    msg_type = MSG_TEXT
-    if attachments:
-        msg_type = MSG_IMAGE if any(a.mime.startswith("image/") for a in attachments) else MSG_FILE
+    msg_type = _derive_type(attachments)
 
     message = Message(
         chat_id=chat_id,

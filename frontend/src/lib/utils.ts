@@ -46,6 +46,21 @@ export function isImage(mime: string): boolean {
   return mime.startsWith('image/')
 }
 
+export function isVideo(mime: string): boolean {
+  return mime.startsWith('video/')
+}
+
+export function isAudio(mime: string): boolean {
+  return mime.startsWith('audio/')
+}
+
+export function formatDuration(ms: number | null | undefined): string {
+  const total = Math.round((ms ?? 0) / 1000)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 export function formatDayLabel(iso: string): string {
   const d = new Date(iso)
   const today = new Date()

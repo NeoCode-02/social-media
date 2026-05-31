@@ -32,6 +32,20 @@ def presigned_put_url(key: str, content_type: str) -> str:
     )
 
 
+def presigned_get_url(key: str, download_name: str | None = None) -> str:
+    """Presigned GET URL. If download_name is set, the browser saves the file
+    (Content-Disposition: attachment) with that name instead of opening it."""
+    params: dict[str, Any] = {"Bucket": settings.s3_bucket, "Key": key}
+    if download_name:
+        safe = download_name.replace('"', "").replace("\\", "")
+        params["ResponseContentDisposition"] = f'attachment; filename="{safe}"'
+    return get_s3_client().generate_presigned_url(
+        "get_object",
+        Params=params,
+        ExpiresIn=settings.presign_expire_seconds,
+    )
+
+
 def put_object(key: str, data: bytes, content_type: str) -> None:
     """Upload bytes to object storage (sync — call via a thread in async code)."""
     get_s3_client().put_object(

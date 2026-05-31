@@ -1,12 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Check, CheckCheck, FileText, Pencil, Reply, Trash2, X } from 'lucide-react'
+import { Check, CheckCheck, Pencil, Reply, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { deleteMessage, editMessage } from '@/api/chats'
 import type { Message } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
-import { cn, formatBytes, formatTime, isImage } from '@/lib/utils'
+import { cn, formatTime } from '@/lib/utils'
+import { MessageAttachments } from './MessageAttachments'
 
 interface Props {
   message: Message
@@ -15,6 +16,7 @@ interface Props {
   status?: 'sent' | 'read'
   chatId: string
   onReply?: (m: Message) => void
+  onOpenProfile?: (userId: string) => void
   replyToMessage?: Message | null
 }
 
@@ -25,6 +27,7 @@ export function MessageBubble({
   status,
   chatId,
   onReply,
+  onOpenProfile,
   replyToMessage,
 }: Props) {
   const qc = useQueryClient()
@@ -76,7 +79,9 @@ export function MessageBubble({
       {!mine && (
         <div className="w-8 shrink-0 self-end">
           {showSender && (
-            <Avatar name={message.sender.display_name} src={message.sender.avatar_url} size={32} />
+            <button onClick={() => onOpenProfile?.(message.sender.id)} title={message.sender.display_name}>
+              <Avatar name={message.sender.display_name} src={message.sender.avatar_url} size={32} />
+            </button>
           )}
         </div>
       )}
@@ -118,9 +123,12 @@ export function MessageBubble({
 
         <div className="min-w-0">
           {!mine && showSender && (
-            <span className="mb-1 ml-1 block text-xs font-medium text-muted">
+            <button
+              onClick={() => onOpenProfile?.(message.sender.id)}
+              className="mb-1 ml-1 block text-xs font-medium text-muted transition hover:text-text"
+            >
               {message.sender.display_name}
-            </span>
+            </button>
           )}
           <div
             className={cn(
@@ -167,35 +175,12 @@ export function MessageBubble({
             ) : (
               <>
                 {message.attachments.length > 0 && (
-                  <div className="mb-1 space-y-1.5">
-                    {message.attachments.map((a) =>
-                      isImage(a.mime) ? (
-                        <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block">
-                          <img
-                            src={a.thumbnail_url}
-                            alt={a.name}
-                            className="max-h-64 w-auto max-w-full rounded-xl object-cover"
-                          />
-                        </a>
-                      ) : (
-                        <a
-                          key={a.id}
-                          href={a.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={cn(
-                            'flex items-center gap-2 rounded-xl px-2 py-1.5',
-                            mine ? 'bg-black/10' : 'bg-black/25',
-                          )}
-                        >
-                          <FileText size={20} className="shrink-0" />
-                          <span className="min-w-0">
-                            <span className="block truncate text-xs font-medium">{a.name}</span>
-                            <span className="block text-[10px] opacity-70">{formatBytes(a.size)}</span>
-                          </span>
-                        </a>
-                      ),
-                    )}
+                  <div className="mb-1">
+                    <MessageAttachments
+                      attachments={message.attachments}
+                      mine={mine}
+                      chatId={chatId}
+                    />
                   </div>
                 )}
                 {message.content && (

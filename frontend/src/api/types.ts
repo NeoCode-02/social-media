@@ -5,10 +5,17 @@ export interface UserPublic {
   avatar_url: string | null
 }
 
-export interface UserMe extends UserPublic {
+export interface UserProfile extends UserPublic {
+  bio: string | null
+  location: string | null
+  website: string | null
+  created_at: string
+  last_seen: string | null
+}
+
+export interface UserMe extends UserProfile {
   email: string
   email_verified: boolean
-  created_at: string
 }
 
 export interface Attachment {
@@ -20,6 +27,9 @@ export interface Attachment {
   size: number
   width: number | null
   height: number | null
+  duration_ms: number | null
+  as_file: boolean
+  is_voice: boolean
 }
 
 export interface Message {

@@ -1,12 +1,22 @@
 import uuid
 
 import anyio
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import get_current_verified_user
 from app.core.rate_limit import rate_limit
+from app.core.storage import presigned_get_url
 from app.modules.chats import service
 from app.modules.chats.schemas import (
     AddMembersRequest,
@@ -15,6 +25,7 @@ from app.modules.chats.schemas import (
     MarkReadRequest,
 )
 from app.modules.messages import service as msg_service
+from app.modules.messages.models import Attachment
 from app.modules.messages.schemas import (
     AttachmentRead,
     MessageCreate,
@@ -130,6 +141,9 @@ async def send_message(
 async def upload_attachment(
     chat_id: uuid.UUID,
     file: UploadFile = File(...),
+    as_file: bool = Form(False),
+    is_voice: bool = Form(False),
+    duration_ms: int | None = Form(None),
     user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> AttachmentRead:
@@ -138,8 +152,34 @@ async def upload_attachment(
     if len(data) > msg_service.MAX_ATTACHMENT_BYTES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (max 15MB)")
     mime = file.content_type or "application/octet-stream"
-    meta = await anyio.to_thread.run_sync(msg_service.process_blob, chat_id, data, mime)
+    meta = await anyio.to_thread.run_sync(
+        msg_service.process_blob, chat_id, data, mime, as_file
+    )
     attachment = await msg_service.record_attachment(
-        db, chat_id, user, file.filename or "file", mime, len(data), meta
+        db,
+        chat_id,
+        user,
+        file.filename or "file",
+        mime,
+        len(data),
+        meta,
+        as_file=as_file,
+        is_voice=is_voice,
+        duration_ms=duration_ms,
     )
     return AttachmentRead.model_validate(attachment)
+
+
+@router.get("/{chat_id}/attachments/{attachment_id}/download-url")
+async def attachment_download_url(
+    chat_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Presigned GET URL that forces a download with the original filename."""
+    await service.require_member(db, chat_id, user.id)
+    att = await db.get(Attachment, attachment_id)
+    if att is None or att.chat_id != chat_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+    return {"url": presigned_get_url(att.storage_key, att.name)}
