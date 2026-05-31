@@ -31,8 +31,10 @@ export function Conversation() {
 
   const face = chat ? chatFace(chat, me?.id) : null
   const online = useRealtimeStore((s) => (face?.userId ? s.online[face.userId] : false))
-  const typingIds = useRealtimeStore((s) => s.typing[chatId] ?? [])
-  const someoneTyping = typingIds.some((id) => id !== me?.id)
+  // Select the stored reference (stable); default outside the selector so we
+  // never return a fresh [] each render (would loop useSyncExternalStore).
+  const typingIds = useRealtimeStore((s) => s.typing[chatId])
+  const someoneTyping = (typingIds ?? []).some((id) => id !== me?.id)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastIdRef = useRef<string | undefined>(undefined)
