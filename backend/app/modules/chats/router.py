@@ -150,7 +150,7 @@ async def upload_attachment(
     await service.require_member(db, chat_id, user.id)
     data = await file.read()
     if len(data) > msg_service.MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (max 15MB)")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (max 100MB)")
     mime = file.content_type or "application/octet-stream"
     meta = await anyio.to_thread.run_sync(
         msg_service.process_blob, chat_id, data, mime, as_file

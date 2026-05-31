@@ -22,7 +22,7 @@ from app.modules.messages.schemas import MessageCreate, MessagePage, MessageRead
 from app.modules.users.models import User
 
 MAX_PAGE = 50
-MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
+MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024
 
 
 def _now() -> datetime:

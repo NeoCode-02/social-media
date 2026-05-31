@@ -35,6 +35,9 @@ export function AvatarCropper({ src, onCancel, onDone }: Props) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      // Stop clicks from bubbling to the parent ProfileDialog backdrop (which
+      // would close the whole dialog the moment you interact with the cropper).
+      onClick={(e) => e.stopPropagation()}
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
     >
       <motion.div
