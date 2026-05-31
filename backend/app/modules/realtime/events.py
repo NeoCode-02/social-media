@@ -36,7 +36,6 @@ async def _co_member_ids(db: AsyncSession, user_id: uuid.UUID) -> set[uuid.UUID]
 
 
 async def _publish(recipients: list[uuid.UUID], event: dict[str, Any]) -> None:
-    from app.core.redis import get_redis
     redis = get_redis()
     event_json = json.dumps(event)
     for user_id in recipients:
