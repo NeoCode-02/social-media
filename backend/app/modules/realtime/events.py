@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis
 from app.modules.chats.models import ChatMember
+from app.modules.follows.models import Follow
 from app.modules.messages.schemas import MessageRead
+from app.modules.posts.schemas import PostRead
 
 CHANNEL = "realtime"
 
@@ -99,3 +101,16 @@ async def publish_read(
 async def publish_presence(db: AsyncSession, user_id: uuid.UUID, status: str) -> None:
     recipients = [u for u in await _co_member_ids(db, user_id) if u != user_id]
     await _publish(recipients, {"type": "presence", "user_id": str(user_id), "status": status})
+
+
+async def publish_post_new(db: AsyncSession, post: PostRead) -> None:
+    """Notify the author's followers (and the author) of a new top-level post so
+    open home timelines can surface it live."""
+    author_id = post.author.id
+    followers = list(
+        (await db.scalars(select(Follow.follower_id).where(Follow.followee_id == author_id))).all()
+    )
+    await _publish(
+        [*followers, author_id],
+        {"type": "post.new", "post": post.model_dump(mode="json")},
+    )

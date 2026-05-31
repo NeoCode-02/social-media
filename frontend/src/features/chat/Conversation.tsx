@@ -8,6 +8,7 @@ import { getChat, markRead } from '@/api/chats'
 import type { Chat, Message } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
 import { FullScreenLoader } from '@/components/FullScreenLoader'
+import { ProfileView } from '@/features/profile/ProfileView'
 import { chatFace, formatDayLabel } from '@/lib/utils'
 import { useAuth } from '@/store/auth'
 import { useRealtimeStore } from '@/store/realtime'
@@ -46,6 +47,7 @@ export function Conversation() {
   const someoneTyping = (typingIds ?? []).some((id) => id !== me?.id)
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+  const [profileUserId, setProfileUserId] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastIdRef = useRef<string | undefined>(undefined)
@@ -137,11 +139,17 @@ export function Conversation() {
   return (
     <div className="relative flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-border px-5 py-3">
-        <Avatar name={face.name} src={face.url} userId={face.userId} showPresence={chat.type === 'dm'} size={40} />
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold">{face.name}</h2>
-          <p className="text-xs text-muted">{subtitle}</p>
-        </div>
+        <button
+          onClick={() => face.userId && setProfileUserId(face.userId)}
+          disabled={!face.userId}
+          className="flex min-w-0 items-center gap-3 rounded-2xl text-left transition enabled:hover:opacity-80 disabled:cursor-default"
+        >
+          <Avatar name={face.name} src={face.url} userId={face.userId} showPresence={chat.type === 'dm'} size={40} />
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold">{face.name}</h2>
+            <p className="text-xs text-muted">{subtitle}</p>
+          </div>
+        </button>
       </header>
 
       <div
@@ -184,6 +192,7 @@ export function Conversation() {
                 status={row.status}
                 chatId={chatId}
                 onReply={setReplyingTo}
+                onOpenProfile={setProfileUserId}
                 replyToMessage={
                   row.message.reply_to_id
                     ? messages.find((m) => m.id === row.message.reply_to_id)
@@ -219,6 +228,12 @@ export function Conversation() {
         replyTo={replyingTo}
         onCancelReply={() => setReplyingTo(null)}
       />
+
+      <AnimatePresence>
+        {profileUserId && (
+          <ProfileView userId={profileUserId} onClose={() => setProfileUserId(null)} />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

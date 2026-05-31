@@ -17,6 +17,9 @@ class AttachmentRead(BaseModel):
     size: int
     width: int | None = None
     height: int | None = None
+    duration_ms: int | None = None
+    as_file: bool = False
+    is_voice: bool = False
 
 
 class MessageCreate(BaseModel):

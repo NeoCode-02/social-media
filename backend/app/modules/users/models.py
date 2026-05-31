@@ -17,6 +17,9 @@ class User(UUIDPrimaryKey, Timestamped, Base):
     password_hash: Mapped[str | None] = mapped_column(sa.String(255), default=None)
     email_verified: Mapped[bool] = mapped_column(sa.Boolean, default=False)
     avatar_url: Mapped[str | None] = mapped_column(sa.String(512), default=None)
+    bio: Mapped[str | None] = mapped_column(sa.String(280), default=None)
+    location: Mapped[str | None] = mapped_column(sa.String(64), default=None)
+    website: Mapped[str | None] = mapped_column(sa.String(255), default=None)
     last_seen: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), default=None)
 
     oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
