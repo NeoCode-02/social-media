@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -11,14 +12,22 @@ from app.modules.auth.router import router as auth_router
 from app.modules.chats.router import router as chats_router
 from app.modules.health.router import router as health_router
 from app.modules.messages.router import router as messages_router
+from app.modules.realtime.manager import pubsub_listener
+from app.modules.realtime.router import router as realtime_router
 from app.modules.users.router import router as users_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup hooks go here (warm caches, etc.)
+    # Start the Redis pub/sub fan-out listener for this process.
+    listener = asyncio.create_task(pubsub_listener())
     yield
     # Shutdown
+    listener.cancel()
+    try:
+        await listener
+    except asyncio.CancelledError:
+        pass
     await close_redis()
     await close_arq_pool()
 
@@ -53,6 +62,8 @@ def create_app() -> FastAPI:
         messages_router,
     ):
         app.include_router(module_router, prefix=settings.api_prefix)
+    # WebSocket lives at /ws (no /api prefix) to match the frontend proxy.
+    app.include_router(realtime_router)
     return app
 
 
