@@ -65,6 +65,25 @@ Access token (15 min) goes in the `Authorization: Bearer` header; the refresh to
 codes and the refresh-token allowlist live in Redis. Read the codes in dev from the
 Mailpit UI (http://localhost:8025).
 
+#### Chat API (M2)
+
+| Method | Path                              | Purpose                                   |
+| ------ | --------------------------------- | ----------------------------------------- |
+| GET    | `/api/chats`                      | your chats + last message + unread count  |
+| POST   | `/api/chats`                      | create a DM (`type:dm,user_id`) or group  |
+| GET    | `/api/chats/{id}`                 | chat detail + members (must be a member)  |
+| POST   | `/api/chats/{id}/members`         | add members to a group (owner/admin)      |
+| DELETE | `/api/chats/{id}/members/me`      | leave a chat                              |
+| POST   | `/api/chats/{id}/read`            | mark read up to a message id              |
+| GET    | `/api/chats/{id}/messages`        | messages, newest-first (`limit`,`before`) |
+| POST   | `/api/chats/{id}/messages`        | send a text message                       |
+| PATCH  | `/api/messages/{id}`              | edit your message                         |
+| DELETE | `/api/messages/{id}`              | soft-delete your message                  |
+
+DMs and groups only (channels are deferred). Messages use time-ordered **UUIDv7**
+ids, so the id is also the chronological cursor; pagination and unread counts compare
+ids directly. All chat endpoints require a verified email.
+
 ### 3. Frontend
 
 ```bash
@@ -86,7 +105,7 @@ cd frontend && npm run lint && npm run typecheck && npm run test && npm run buil
 
 - **M0** Scaffold & infra ✅
 - **M1** Auth & users (email+password JWT, 6-digit verify, Google OAuth, avatars) ✅
-- **M2** Chats & messages (DM/group, REST, cursor pagination, read receipts)
+- **M2** Chats & messages (DM/group, REST, cursor pagination, read receipts) ✅
 - **M3** Realtime (WebSocket + Redis pub/sub: live messages, typing, presence)
 - **M4** Media in chat (presigned upload, thumbnails)
 - **M5** Hardening (rate limits, logging, prod build) + seams for Twitter feed
