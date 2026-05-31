@@ -22,7 +22,7 @@ docker compose up -d postgres redis minio minio-init mailpit
 
 | Service      | URL / port                                   |
 | ------------ | -------------------------------------------- |
-| Postgres     | `localhost:5432` (postgres/postgres)         |
+| Postgres     | `localhost:5433` (postgres/postgres)         |
 | Redis        | `localhost:6379`                             |
 | MinIO API    | `localhost:9000` (minioadmin/minioadmin)     |
 | MinIO console| http://localhost:9001                        |

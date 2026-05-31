@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: social_media
     ports:
-      - '5432:5432'
+      # Host 5433 → container 5432 (host 5432 often taken by a native Postgres).
+      - '5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
