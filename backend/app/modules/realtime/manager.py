@@ -8,7 +8,6 @@ from typing import Any
 from fastapi import WebSocket
 
 from app.core.redis import get_redis
-from app.modules.realtime.events import CHANNEL
 
 _logger = logging.getLogger("app.realtime")
 
@@ -46,7 +45,6 @@ class ConnectionManager:
 
     async def _user_pubsub_listener(self, user_id: uuid.UUID) -> None:
         """Subscribe to a specific user's Redis channel."""
-        from app.core.redis import get_redis
         channel = f"user:{user_id}"
         while True:
             pubsub = get_redis().pubsub()

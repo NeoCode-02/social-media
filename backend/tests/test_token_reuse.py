@@ -1,6 +1,5 @@
-import pytest
 from httpx import AsyncClient
-from app.modules.auth import service
+
 
 async def _make_user(client: AsyncClient, fake_redis, email: str, username: str):
     await client.post(

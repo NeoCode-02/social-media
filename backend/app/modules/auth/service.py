@@ -117,7 +117,9 @@ async def issue_tokens(user: User, parent_jti: str | None = None) -> tuple[str, 
         REFRESH_KEY.format(jti=jti), json.dumps(data), ex=settings.refresh_token_ttl_seconds
     )
     # Add JTI to the user's active session set
-    await redis.sadd(USER_SESSIONS_KEY.format(user_id=user_id_str), jti)
+    res = redis.sadd(USER_SESSIONS_KEY.format(user_id=user_id_str), jti)
+    if not isinstance(res, int):
+        await res
     return access, refresh
 
 
@@ -157,7 +159,9 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
 
     # Mark this token as rotated/used for a short grace period to detect reuse.
     await redis.delete(key)
-    await redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
+    res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
+    if not isinstance(res_srem, int):
+        await res_srem
     await redis.set(f"reused:{jti}", "1", ex=3600)
 
     access = create_access_token(sub)
@@ -167,14 +171,17 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
     await redis.set(
         REFRESH_KEY.format(jti=new_jti), json.dumps(data), ex=settings.refresh_token_ttl_seconds
     )
-    await redis.sadd(USER_SESSIONS_KEY.format(user_id=sub), new_jti)
+    res_sadd = redis.sadd(USER_SESSIONS_KEY.format(user_id=sub), new_jti)
+    if not isinstance(res_sadd, int):
+        await res_sadd
     return access, new_refresh
 
 
 async def _revoke_all_for_user(user_id: str) -> None:
     redis = get_redis()
     sessions_key = USER_SESSIONS_KEY.format(user_id=user_id)
-    jtis = await redis.smembers(sessions_key)
+    res_smembers = redis.smembers(sessions_key)
+    jtis = await res_smembers if not isinstance(res_smembers, set) else res_smembers
     for jti in jtis:
         await redis.delete(REFRESH_KEY.format(jti=jti))
     await redis.delete(sessions_key)
@@ -195,7 +202,9 @@ async def revoke_refresh(refresh_token: str) -> None:
     sub = payload["sub"]
     redis = get_redis()
     await redis.delete(REFRESH_KEY.format(jti=jti))
-    await redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
+    res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
+    if not isinstance(res_srem, int):
+        await res_srem
 
 
 async def get_or_create_oauth_user(

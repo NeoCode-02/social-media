@@ -1,4 +1,3 @@
-import asyncio
 import json
 import uuid
 
@@ -7,7 +6,7 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.main import app
-from app.modules.realtime.events import CHANNEL, _publish
+from app.modules.realtime.events import _publish
 from app.modules.realtime.manager import ConnectionManager
 
 
