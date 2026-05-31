@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { getAccessToken } from '@/api/client'
 import type { Chat, Message } from '@/api/types'
+import { prependToTimeline } from '@/features/feed/postCache'
 import { useRealtimeStore } from '@/store/realtime'
 import { wsClient } from './ws'
 
@@ -40,6 +41,9 @@ export function useRealtime(): void {
           break
         case 'presence':
           setPresence(ev.user_id, ev.status === 'online')
+          break
+        case 'post.new':
+          prependToTimeline(qc, ev.post)
           break
         case 'typing': {
           setTyping(ev.chat_id, ev.user_id, ev.is_typing)

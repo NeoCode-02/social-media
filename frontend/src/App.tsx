@@ -3,10 +3,14 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { setOnAuthFail } from '@/api/client'
 import { bootstrapSession } from '@/api/session'
+import { AppShell } from '@/components/AppShell'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { ChatLayout } from '@/features/chat/ChatLayout'
 import { Conversation } from '@/features/chat/Conversation'
 import { EmptyConversation } from '@/features/chat/EmptyConversation'
+import { FeedPage } from '@/features/feed/FeedPage'
+import { PostThread } from '@/features/feed/PostThread'
+import { ProfilePage } from '@/features/feed/ProfilePage'
 import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
@@ -28,12 +32,18 @@ function App() {
       <Route path="/verify" element={<VerifyPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<ChatLayout />}>
-          <Route index element={<EmptyConversation />} />
-          <Route path="c/:chatId" element={<Conversation />} />
+        <Route element={<AppShell />}>
+          <Route index element={<Navigate to="/feed" replace />} />
+          <Route path="feed" element={<FeedPage />} />
+          <Route path="post/:postId" element={<PostThread />} />
+          <Route path="u/:userId" element={<ProfilePage />} />
+          <Route element={<ChatLayout />}>
+            <Route path="messages" element={<EmptyConversation />} />
+            <Route path="c/:chatId" element={<Conversation />} />
+          </Route>
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/feed" replace />} />
     </Routes>
   )
 }
