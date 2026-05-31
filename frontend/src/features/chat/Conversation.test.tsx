@@ -27,6 +27,9 @@ vi.mock('@/api/chats', () => ({
   listMessages: vi.fn().mockResolvedValue({ data: { messages: [], next_cursor: null } }),
   markRead: vi.fn().mockResolvedValue({ data: {} }),
   sendMessage: vi.fn(),
+  uploadAttachment: vi.fn(),
+  editMessage: vi.fn(),
+  deleteMessage: vi.fn(),
 }))
 
 import { Conversation } from './Conversation'

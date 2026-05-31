@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AnimatePresence } from 'framer-motion'
-import { useEffect, useRef } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowDown } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 
 import { getChat, markRead } from '@/api/chats'
@@ -46,16 +47,36 @@ export function Conversation() {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastIdRef = useRef<string | undefined>(undefined)
+  const nearBottomRef = useRef(true)
+  const [showJump, setShowJump] = useState(false)
+
+  function onScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    nearBottomRef.current = distance < 120
+    setShowJump(distance >= 120)
+  }
+
+  function scrollToBottom() {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+    setShowJump(false)
+  }
 
   useEffect(() => {
     const last = messages[messages.length - 1]
     if (!last || last.id === lastIdRef.current) return
+    const wasInitial = lastIdRef.current === undefined
     lastIdRef.current = last.id
-    requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (el) el.scrollTop = el.scrollHeight
-    })
-  }, [messages])
+    // Jump to newest on load / own send / when already near the bottom — but
+    // don't yank the viewport while the user is reading older history.
+    if (wasInitial || nearBottomRef.current || last.sender_id === me?.id) {
+      requestAnimationFrame(() => {
+        const el = scrollRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      })
+    }
+  }, [messages, me?.id])
 
   useEffect(() => {
     // Clear this chat's sidebar unread badge immediately.
@@ -112,7 +133,7 @@ export function Conversation() {
         : 'Offline'
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
       <header className="flex items-center gap-3 border-b border-border px-5 py-3">
         <Avatar name={face.name} src={face.url} userId={face.userId} showPresence={chat.type === 'dm'} size={40} />
         <div className="min-w-0">
@@ -121,7 +142,11 @@ export function Conversation() {
         </div>
       </header>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-5 py-4">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-5 py-4"
+      >
         {hasMore && messages.length > 0 && (
           <div className="flex justify-center pb-2">
             <button
@@ -155,6 +180,7 @@ export function Conversation() {
                 mine={row.mine}
                 showSender={row.showSender}
                 status={row.status}
+                chatId={chatId}
               />
             ),
           )
@@ -164,6 +190,21 @@ export function Conversation() {
           {someoneTyping && <TypingIndicator label={chat.type === 'group' ? 'someone is typing' : undefined} />}
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {showJump && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={scrollToBottom}
+            className="absolute bottom-20 right-6 z-10 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card shadow-soft transition hover:bg-cardhover"
+            title="Jump to latest"
+          >
+            <ArrowDown size={18} />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       <MessageInput chatId={chatId} />
     </div>
