@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Check, CheckCheck, FileText, Pencil, Trash2, X } from 'lucide-react'
+import { Check, CheckCheck, FileText, Pencil, Reply, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 
 import { deleteMessage, editMessage } from '@/api/chats'
@@ -14,9 +14,19 @@ interface Props {
   showSender: boolean
   status?: 'sent' | 'read'
   chatId: string
+  onReply?: (m: Message) => void
+  replyToMessage?: Message | null
 }
 
-export function MessageBubble({ message, mine, showSender, status, chatId }: Props) {
+export function MessageBubble({
+  message,
+  mine,
+  showSender,
+  status,
+  chatId,
+  onReply,
+  replyToMessage,
+}: Props) {
   const qc = useQueryClient()
   const deleted = Boolean(message.deleted_at)
   const [editing, setEditing] = useState(false)
@@ -72,9 +82,9 @@ export function MessageBubble({ message, mine, showSender, status, chatId }: Pro
       )}
 
       <div className={cn('flex max-w-[68%] items-end gap-1', mine ? 'flex-row' : 'flex-row-reverse')}>
-        {mine && !deleted && !editing && (
+        {!deleted && !editing && (
           <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-            {canEditText && (
+            {mine && canEditText && (
               <button
                 onClick={() => {
                   setDraft(message.content ?? '')
@@ -87,13 +97,22 @@ export function MessageBubble({ message, mine, showSender, status, chatId }: Pro
               </button>
             )}
             <button
-              onClick={onDelete}
-              disabled={busy}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-danger"
-              title="Delete"
+              onClick={() => onReply?.(message)}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-text"
+              title="Reply"
             >
-              <Trash2 size={13} />
+              <Reply size={13} />
             </button>
+            {mine && (
+              <button
+                onClick={onDelete}
+                disabled={busy}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-danger"
+                title="Delete"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
         )}
 
@@ -109,6 +128,19 @@ export function MessageBubble({ message, mine, showSender, status, chatId }: Pro
               mine ? 'rounded-br-md bg-accent text-accentink' : 'rounded-bl-md bg-card text-text',
             )}
           >
+            {replyToMessage && (
+              <div
+                className={cn(
+                  'mb-2 border-l-2 py-1 pl-2 text-[11px]',
+                  mine ? 'border-accentink/30 bg-black/5' : 'border-accent/40 bg-accent/5',
+                )}
+              >
+                <p className="font-semibold opacity-70">{replyToMessage.sender.display_name}</p>
+                <p className="truncate opacity-60">
+                  {replyToMessage.content || (replyToMessage.attachments.length ? 'Media' : '')}
+                </p>
+              </div>
+            )}
             {editing ? (
               <div className="flex items-center gap-2">
                 <input

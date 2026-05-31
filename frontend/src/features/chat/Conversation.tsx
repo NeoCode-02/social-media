@@ -45,6 +45,8 @@ export function Conversation() {
   const typingIds = useRealtimeStore((s) => s.typing[chatId])
   const someoneTyping = (typingIds ?? []).some((id) => id !== me?.id)
 
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastIdRef = useRef<string | undefined>(undefined)
   const nearBottomRef = useRef(true)
@@ -181,6 +183,12 @@ export function Conversation() {
                 showSender={row.showSender}
                 status={row.status}
                 chatId={chatId}
+                onReply={setReplyingTo}
+                replyToMessage={
+                  row.message.reply_to_id
+                    ? messages.find((m) => m.id === row.message.reply_to_id)
+                    : null
+                }
               />
             ),
           )
@@ -206,7 +214,11 @@ export function Conversation() {
         )}
       </AnimatePresence>
 
-      <MessageInput chatId={chatId} />
+      <MessageInput
+        chatId={chatId}
+        replyTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
+      />
     </div>
   )
 }
