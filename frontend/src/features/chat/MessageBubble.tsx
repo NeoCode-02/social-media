@@ -97,6 +97,7 @@ export function MessageBubble({
                 }}
                 className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-text"
                 title="Edit"
+                aria-label="Edit message"
               >
                 <Pencil size={13} />
               </button>
@@ -105,6 +106,7 @@ export function MessageBubble({
               onClick={() => onReply?.(message)}
               className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-text"
               title="Reply"
+              aria-label="Reply to message"
             >
               <Reply size={13} />
             </button>
@@ -114,6 +116,7 @@ export function MessageBubble({
                 disabled={busy}
                 className="flex h-7 w-7 items-center justify-center rounded-full text-faint hover:bg-cardhover hover:text-danger"
                 title="Delete"
+                aria-label="Delete message"
               >
                 <Trash2 size={13} />
               </button>

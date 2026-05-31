@@ -124,7 +124,7 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
               {replyTo.content || (replyTo.attachments.length ? 'Media' : '')}
             </p>
           </div>
-          <button onClick={onCancelReply} className="text-faint hover:text-text">
+          <button onClick={onCancelReply} aria-label="Cancel reply" className="text-faint hover:text-text">
             <X size={16} />
           </button>
         </div>
@@ -133,7 +133,7 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
       {uploadError && (
         <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl bg-danger/10 px-3 py-2 text-xs text-danger">
           <span className="min-w-0 flex-1 truncate">{uploadError}</span>
-          <button onClick={() => setUploadError('')} className="shrink-0 hover:opacity-70">
+          <button onClick={() => setUploadError('')} aria-label="Dismiss error" className="shrink-0 hover:opacity-70">
             <X size={14} />
           </button>
         </div>
@@ -186,6 +186,7 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
               title="Attach"
+              aria-label="Attach file or image"
               className="flex h-10 w-10 items-center justify-center rounded-full text-faint transition hover:bg-cardhover hover:text-muted"
             >
               <Paperclip size={18} />
@@ -231,7 +232,13 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
           <input
             value={text}
             onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && replyTo) {
+                onCancelReply?.()
+              }
+            }}
             placeholder="Write a message…"
+            aria-label="Message"
             className="min-w-0 flex-1 rounded-full border border-border bg-card px-4 py-3 text-sm outline-none placeholder:text-faint focus:border-violet/50"
           />
 
@@ -239,15 +246,21 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
             <button
               type="submit"
               disabled={sending}
+              aria-label="Send message"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-accentink transition hover:brightness-105 active:scale-95 disabled:opacity-40"
             >
-              <SendHorizontal size={18} />
+              {sending ? (
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <SendHorizontal size={18} />
+              )}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => setRecording(true)}
               title="Record voice message"
+              aria-label="Record voice message"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-accentink transition hover:brightness-105 active:scale-95"
             >
               <Mic size={18} />
