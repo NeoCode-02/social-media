@@ -45,3 +45,23 @@ async def test_avatar_rejects_bad_type(client: AsyncClient, fake_redis):
         "/api/users/me/avatar-url", json={"content_type": "application/pdf"}, headers=headers
     )
     assert resp.status_code == 422
+
+
+async def test_user_search(client: AsyncClient, fake_redis):
+    headers = await _verified_headers(client, fake_redis)  # bob
+    await client.post(
+        "/api/auth/register",
+        json={
+            "email": "alice@example.com",
+            "username": "alice",
+            "password": "password123",
+            "display_name": "Alice",
+        },
+    )
+    found = await client.get("/api/users/search?q=ali", headers=headers)
+    assert found.status_code == 200
+    assert "alice" in [u["username"] for u in found.json()]
+
+    # self is excluded
+    self_search = await client.get("/api/users/search?q=bob", headers=headers)
+    assert all(u["username"] != "bob" for u in self_search.json())

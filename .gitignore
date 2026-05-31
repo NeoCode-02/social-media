@@ -21,3 +21,6 @@ Thumbs.db
 
 # Docker volumes (if bind-mounted locally)
 /data/
+
+# Design reference screenshots (not part of the app)
+/photo/

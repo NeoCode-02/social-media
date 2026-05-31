@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 
 import App from './App.tsx'
 import { queryClient } from './lib/queryClient'
+import '@fontsource-variable/inter'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(

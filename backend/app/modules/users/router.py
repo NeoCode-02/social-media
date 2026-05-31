@@ -1,16 +1,18 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, get_current_verified_user
 from app.core.storage import presigned_put_url, public_url
 from app.modules.users.models import User
 from app.modules.users.schemas import (
     AvatarUploadRequest,
     AvatarUploadResponse,
     UserMe,
+    UserPublic,
     UserUpdate,
 )
 
@@ -23,6 +25,21 @@ _EXT = {
     "image/webp": "webp",
     "image/gif": "gif",
 }
+
+
+@router.get("/search", response_model=list[UserPublic])
+async def search_users(
+    q: str = Query(min_length=1, max_length=32),
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[User]:
+    rows = await db.scalars(
+        select(User)
+        .where(User.id != user.id, User.username.ilike(f"%{q}%"))
+        .order_by(User.username)
+        .limit(10)
+    )
+    return list(rows.all())
 
 
 @router.get("/me", response_model=UserMe)
