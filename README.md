@@ -79,8 +79,14 @@ Mailpit UI (http://localhost:8025).
 | POST   | `/api/chats/{id}/messages`        | send a text message                       |
 | PATCH  | `/api/messages/{id}`              | edit your message                         |
 | DELETE | `/api/messages/{id}`              | soft-delete your message                  |
+| POST   | `/api/chats/{id}/attachments`     | upload media (`as_file`/`is_voice`/`duration_ms`) |
+| GET    | `/api/chats/{id}/attachments/{aid}/download-url` | signed link that forces a download |
+| GET    | `/api/users/{id}`                 | another user's public profile (bio, etc.) |
 
-DMs and groups only (channels are deferred). Messages use time-ordered **UUIDv7**
+Attachments cover images, video, audio, voice notes, and documents (≤15 MB). Images
+open in an in-app lightbox; video/audio play inline; voice notes use a compact player;
+anything else renders as a downloadable card. `as_file` forces the file card even for
+images. DMs and groups only (channels are deferred). Messages use time-ordered **UUIDv7**
 ids, so the id is also the chronological cursor; pagination and unread counts compare
 ids directly. All chat endpoints require a verified email.
 
@@ -126,9 +132,13 @@ cd frontend && npm run lint && npm run typecheck && npm run test && npm run buil
 - **M3** Realtime (WebSocket + Redis pub/sub: live messages, typing, presence) ✅
 - **M4** Media in chat (images + files, MinIO storage, thumbnails) ✅
 - **M5** Hardening (rate limits, structured logging + request IDs, security headers) ✅
+- **Twitter half** Feed (posts, follows, likes, reposts, replies, timeline, profiles) ✅
 
 Plus a full **React SPA** ("Pulse"): auth, chat list, live conversation (typing,
-presence, read receipts), media, message edit/delete, profile editor.
+presence, read receipts), rich media (image lightbox, inline video/audio, voice
+recording, file downloads), message edit/delete/reply, viewable user profiles with
+bio/location/website, a profile editor with avatar cropping, and a public **feed**
+(home timeline, composer, threaded replies, likes/reposts, follow graph).
 
 ## Hardening (M5)
 
@@ -137,7 +147,7 @@ presence, read receipts), media, message edit/delete, profile editor.
 - **Structured logging**: one JSON line per request (`method`, `path`, `status`, `duration_ms`,
   `request_id`). Configure level via `DEBUG`.
 - **Rate limits** (Redis fixed-window, per client IP): auth (login/register/resend),
-  chat create, message send, attachment upload, user search.
+  chat create, message send, attachment upload, user search, post create, post upload, follow.
 - **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`.
 - **Global error handler**: unhandled exceptions → `500 {detail, request_id}` (logged with traceback).
 
@@ -150,18 +160,36 @@ Build the API image from `backend/Dockerfile`; run `alembic upgrade head` on dep
 run the API and a separate `arq app.worker.WorkerSettings` worker. Serve the frontend
 `npm run build` output behind a CDN/static host with `/api` + `/ws` proxied to the API.
 
-## Next phase — Twitter feed (seams)
+## Twitter half — feed, posts, follows
 
-The chat MVP is the Telegram half. The public-feed half slots in as new modules without
-touching chat, reusing the same auth, users, media, and realtime fan-out:
+The public-feed half reuses the same auth, users, media, and realtime fan-out. Posts use
+the same time-ordered **UUIDv7** ids/cursor as messages; like/reply/repost counts are
+**computed on read** in batched queries (no denormalized-counter drift).
 
-- `modules/posts` — `posts` table (author, text, attachments via existing `attachments`),
-  create/delete, `POST/GET /api/posts`.
-- `modules/follows` — `follows` (follower_id, followee_id); follow/unfollow + counts.
-- `modules/timeline` — home timeline (fan-out-on-read first: posts from followees, cursor
-  paginated by UUIDv7 id like messages), plus per-user profile feed.
-- `modules/interactions` — likes / reposts / replies (reply = post with `parent_id`).
-- Realtime: publish `post.new` / `like` over the existing Redis channel to live-update feeds.
-- Channels (broadcast chat) can reuse `posts` + `chats` once the feed exists.
+| Method | Path                              | Purpose                                   |
+| ------ | --------------------------------- | ----------------------------------------- |
+| GET    | `/api/posts`                      | home timeline (followees + you, cursor)   |
+| POST   | `/api/posts`                      | create (`text`,`attachment_ids`,`parent_id`,`repost_of_id`) |
+| GET    | `/api/posts/{id}`                 | single post (counts + your like/repost)   |
+| DELETE | `/api/posts/{id}`                 | soft-delete your post                     |
+| GET    | `/api/posts/{id}/replies`         | replies (cursor)                          |
+| POST/DELETE | `/api/posts/{id}/like`       | like / unlike                             |
+| POST/DELETE | `/api/posts/{id}/repost`     | repost / un-repost                        |
+| POST   | `/api/posts/attachments`          | upload post media (reuses the chat pipeline) |
+| GET    | `/api/users/{id}/posts`           | a user's profile feed                     |
+| POST/DELETE | `/api/users/{id}/follow`     | follow / unfollow                         |
+| GET    | `/api/users/{id}/followers` · `/following` | follow graph                     |
+
+A reply is a post with `parent_id`; a repost is a post with `repost_of_id` (no text = bare
+repost, with text = quote). New top-level posts publish `post.new` to the author's followers
+over the per-user realtime channels, so open timelines update live.
+
+The **SPA** adds an icon rail switching between **Home** (feed: composer, infinite timeline,
+like/reply/repost, image/video/voice posts, threads) and **Messages** (the chat half), plus
+profile pages with follow/unfollow and a user's posts.
+
+### Later phases
+Channels (broadcast chat) can reuse `posts` + `chats`; trending/hashtags, quote-post UI,
+notifications, and mobile-responsive layout are still open.
 
 See `~/.claude/plans/i-want-to-do-woolly-unicorn.md` for the full plan.

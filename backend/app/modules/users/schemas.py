@@ -13,15 +13,33 @@ class UserPublic(BaseModel):
     avatar_url: str | None = None
 
 
-class UserMe(UserPublic):
+class UserProfile(UserPublic):
+    """Full public profile for a user's page (heavier than the embedded
+    UserPublic used inside every message/chat payload)."""
+
+    bio: str | None = None
+    location: str | None = None
+    website: str | None = None
+    created_at: datetime
+    last_seen: datetime | None = None
+
+    followers_count: int = 0
+    following_count: int = 0
+    posts_count: int = 0
+    is_following: bool = False  # does the requester follow this user?
+
+
+class UserMe(UserProfile):
     email: str
     email_verified: bool
-    created_at: datetime
 
 
 class UserUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=64)
     avatar_url: str | None = Field(default=None, max_length=512)
+    bio: str | None = Field(default=None, max_length=280)
+    location: str | None = Field(default=None, max_length=64)
+    website: str | None = Field(default=None, max_length=255)
 
 
 class AvatarUploadRequest(BaseModel):

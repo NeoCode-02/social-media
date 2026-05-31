@@ -5,10 +5,21 @@ export interface UserPublic {
   avatar_url: string | null
 }
 
-export interface UserMe extends UserPublic {
+export interface UserProfile extends UserPublic {
+  bio: string | null
+  location: string | null
+  website: string | null
+  created_at: string
+  last_seen: string | null
+  followers_count: number
+  following_count: number
+  posts_count: number
+  is_following: boolean
+}
+
+export interface UserMe extends UserProfile {
   email: string
   email_verified: boolean
-  created_at: string
 }
 
 export interface Attachment {
@@ -20,6 +31,9 @@ export interface Attachment {
   size: number
   width: number | null
   height: number | null
+  duration_ms: number | null
+  as_file: boolean
+  is_voice: boolean
 }
 
 export interface Message {
@@ -60,6 +74,29 @@ export interface MessagePage {
   next_cursor: string | null
 }
 
+export interface Post {
+  id: string
+  author: UserPublic
+  text: string | null
+  parent_id: string | null
+  created_at: string
+  edited_at: string | null
+  deleted_at: string | null
+  attachments: Attachment[]
+  reply_count: number
+  repost_count: number
+  like_count: number
+  liked_by_me: boolean
+  reposted_by_me: boolean
+  repost_of: Post | null
+  reply_to: Post | null
+}
+
+export interface PostPage {
+  posts: Post[]
+  next_cursor: string | null
+}
+
 export interface TokenResponse {
   access_token: string
   token_type: string
@@ -71,3 +108,4 @@ export type RealtimeEvent =
   | { type: 'typing'; chat_id: string; user_id: string; is_typing: boolean }
   | { type: 'message.read'; chat_id: string; user_id: string; last_read_message_id: string }
   | { type: 'presence'; user_id: string; status: 'online' | 'offline' }
+  | { type: 'post.new'; post: Post }

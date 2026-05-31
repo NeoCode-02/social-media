@@ -46,6 +46,34 @@ export function isImage(mime: string): boolean {
   return mime.startsWith('image/')
 }
 
+export function isVideo(mime: string): boolean {
+  return mime.startsWith('video/')
+}
+
+export function isAudio(mime: string): boolean {
+  return mime.startsWith('audio/')
+}
+
+export function formatDuration(ms: number | null | undefined): string {
+  const total = Math.round((ms ?? 0) / 1000)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+export function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const s = Math.floor(diff / 1000)
+  if (s < 60) return 'now'
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h`
+  const d = Math.floor(h / 24)
+  if (d < 7) return `${d}d`
+  return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 export function formatDayLabel(iso: string): string {
   const d = new Date(iso)
   const today = new Date()

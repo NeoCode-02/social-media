@@ -14,8 +14,11 @@ from app.core.queue import close_arq_pool
 from app.core.redis import close_redis
 from app.modules.auth.router import router as auth_router
 from app.modules.chats.router import router as chats_router
+from app.modules.follows.router import router as follows_router
 from app.modules.health.router import router as health_router
 from app.modules.messages.router import router as messages_router
+from app.modules.posts.router import router as posts_router
+from app.modules.posts.router import user_router as user_posts_router
 from app.modules.realtime.manager import pubsub_listener
 from app.modules.realtime.router import router as realtime_router
 from app.modules.users.router import router as users_router
@@ -79,6 +82,9 @@ def create_app() -> FastAPI:
         users_router,
         chats_router,
         messages_router,
+        posts_router,
+        user_posts_router,
+        follows_router,
     ):
         app.include_router(module_router, prefix=settings.api_prefix)
     # WebSocket lives at /ws (no /api prefix) to match the frontend proxy.

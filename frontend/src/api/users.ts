@@ -1,8 +1,16 @@
 import { api } from './client'
-import type { UserMe } from './types'
+import type { UserMe, UserProfile } from './types'
 
-export const updateMe = (body: { display_name?: string }) =>
-  api.patch<UserMe>('/users/me', body)
+export interface ProfileUpdate {
+  display_name?: string
+  bio?: string | null
+  location?: string | null
+  website?: string | null
+}
+
+export const updateMe = (body: ProfileUpdate) => api.patch<UserMe>('/users/me', body)
+
+export const getUser = (id: string) => api.get<UserProfile>(`/users/${id}`)
 
 export const uploadAvatar = (file: File) => {
   const form = new FormData()
