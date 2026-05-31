@@ -1,11 +1,15 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.config import settings
+from app.core.logging import configure_logging, request_id_var
+from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.core.queue import close_arq_pool
 from app.core.redis import close_redis
 from app.modules.auth.router import router as auth_router
@@ -33,26 +37,41 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    configure_logging("DEBUG" if settings.debug else "INFO")
     app = FastAPI(
         title=settings.app_name,
         debug=settings.debug,
         lifespan=lifespan,
     )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origin_list,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-    # Required by Authlib to persist OAuth state across the redirect.
+    # Inner → outer. RequestContext is added last so it wraps everything and
+    # always stamps the X-Request-ID / logs the final status.
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.secret_key,
         same_site="lax",
         https_only=settings.cookie_secure,
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
+    )
+    app.add_middleware(RequestContextMiddleware)
+
+    @app.exception_handler(Exception)
+    async def on_unhandled(request: Request, exc: Exception) -> JSONResponse:
+        rid = request_id_var.get(None)
+        logging.getLogger("app.error").exception("unhandled error")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "request_id": rid},
+            headers={"X-Request-ID": rid} if rid else None,
+        )
 
     for module_router in (
         health_router,

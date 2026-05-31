@@ -124,7 +124,44 @@ cd frontend && npm run lint && npm run typecheck && npm run test && npm run buil
 - **M1** Auth & users (email+password JWT, 6-digit verify, Google OAuth, avatars) ✅
 - **M2** Chats & messages (DM/group, REST, cursor pagination, read receipts) ✅
 - **M3** Realtime (WebSocket + Redis pub/sub: live messages, typing, presence) ✅
-- **M4** Media in chat (presigned upload, thumbnails)
-- **M5** Hardening (rate limits, logging, prod build) + seams for Twitter feed
+- **M4** Media in chat (images + files, MinIO storage, thumbnails) ✅
+- **M5** Hardening (rate limits, structured logging + request IDs, security headers) ✅
+
+Plus a full **React SPA** ("Pulse"): auth, chat list, live conversation (typing,
+presence, read receipts), media, message edit/delete, profile editor.
+
+## Hardening (M5)
+
+- **Request IDs**: every response carries `X-Request-ID` (echoed if the client sends one);
+  it appears in structured JSON logs and in 500 error bodies for tracing.
+- **Structured logging**: one JSON line per request (`method`, `path`, `status`, `duration_ms`,
+  `request_id`). Configure level via `DEBUG`.
+- **Rate limits** (Redis fixed-window, per client IP): auth (login/register/resend),
+  chat create, message send, attachment upload, user search.
+- **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`.
+- **Global error handler**: unhandled exceptions → `500 {detail, request_id}` (logged with traceback).
+
+## Deployment notes
+
+For production, override these env vars (see `backend/.env.example`):
+`SECRET_KEY` (strong random), `DEBUG=false`, `COOKIE_SECURE=true`, real `SMTP_*`,
+`S3_*` (e.g. AWS S3), `GOOGLE_CLIENT_ID/SECRET`, and `CORS_ORIGINS`/`FRONTEND_URL`.
+Build the API image from `backend/Dockerfile`; run `alembic upgrade head` on deploy;
+run the API and a separate `arq app.worker.WorkerSettings` worker. Serve the frontend
+`npm run build` output behind a CDN/static host with `/api` + `/ws` proxied to the API.
+
+## Next phase — Twitter feed (seams)
+
+The chat MVP is the Telegram half. The public-feed half slots in as new modules without
+touching chat, reusing the same auth, users, media, and realtime fan-out:
+
+- `modules/posts` — `posts` table (author, text, attachments via existing `attachments`),
+  create/delete, `POST/GET /api/posts`.
+- `modules/follows` — `follows` (follower_id, followee_id); follow/unfollow + counts.
+- `modules/timeline` — home timeline (fan-out-on-read first: posts from followees, cursor
+  paginated by UUIDv7 id like messages), plus per-user profile feed.
+- `modules/interactions` — likes / reposts / replies (reply = post with `parent_id`).
+- Realtime: publish `post.new` / `like` over the existing Redis channel to live-update feeds.
+- Channels (broadcast chat) can reuse `posts` + `chats` once the feed exists.
 
 See `~/.claude/plans/i-want-to-do-woolly-unicorn.md` for the full plan.

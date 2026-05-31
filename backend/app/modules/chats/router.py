@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import get_current_verified_user
+from app.core.rate_limit import rate_limit
 from app.modules.chats import service
 from app.modules.chats.schemas import (
     AddMembersRequest,
@@ -34,7 +35,12 @@ async def list_my_chats(
     return await service.list_chats(db, user)
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=ChatRead)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ChatRead,
+    dependencies=[rate_limit(30, 60, "chat_create")],
+)
 async def create_chat(
     data: ChatCreate,
     user: User = Depends(get_current_verified_user),
@@ -100,6 +106,7 @@ async def list_messages(
     "/{chat_id}/messages",
     status_code=status.HTTP_201_CREATED,
     response_model=MessageRead,
+    dependencies=[rate_limit(40, 10, "send_msg")],
 )
 async def send_message(
     chat_id: uuid.UUID,
@@ -118,6 +125,7 @@ async def send_message(
     "/{chat_id}/attachments",
     status_code=status.HTTP_201_CREATED,
     response_model=AttachmentRead,
+    dependencies=[rate_limit(20, 60, "upload")],
 )
 async def upload_attachment(
     chat_id: uuid.UUID,
