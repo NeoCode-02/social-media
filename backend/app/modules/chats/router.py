@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+import anyio
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
@@ -13,7 +14,12 @@ from app.modules.chats.schemas import (
     MarkReadRequest,
 )
 from app.modules.messages import service as msg_service
-from app.modules.messages.schemas import MessageCreate, MessagePage, MessageRead
+from app.modules.messages.schemas import (
+    AttachmentRead,
+    MessageCreate,
+    MessagePage,
+    MessageRead,
+)
 from app.modules.realtime import events
 from app.modules.users.models import User
 
@@ -106,3 +112,26 @@ async def send_message(
     payload = MessageRead.model_validate(message)
     await events.publish_message_new(db, chat_id, payload)
     return payload
+
+
+@router.post(
+    "/{chat_id}/attachments",
+    status_code=status.HTTP_201_CREATED,
+    response_model=AttachmentRead,
+)
+async def upload_attachment(
+    chat_id: uuid.UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+) -> AttachmentRead:
+    await service.require_member(db, chat_id, user.id)
+    data = await file.read()
+    if len(data) > msg_service.MAX_ATTACHMENT_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (max 15MB)")
+    mime = file.content_type or "application/octet-stream"
+    meta = await anyio.to_thread.run_sync(msg_service.process_blob, chat_id, data, mime)
+    attachment = await msg_service.record_attachment(
+        db, chat_id, user, file.filename or "file", mime, len(data), meta
+    )
+    return AttachmentRead.model_validate(attachment)
