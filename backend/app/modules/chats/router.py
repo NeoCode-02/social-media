@@ -14,6 +14,7 @@ from app.modules.chats.schemas import (
 )
 from app.modules.messages import service as msg_service
 from app.modules.messages.schemas import MessageCreate, MessagePage, MessageRead
+from app.modules.realtime import events
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/chats", tags=["chats"])
@@ -74,6 +75,7 @@ async def mark_read(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     await service.mark_read(db, user, chat_id, data.last_read_message_id)
+    await events.publish_read(db, chat_id, user.id, data.last_read_message_id)
 
 
 @router.get("/{chat_id}/messages", response_model=MessagePage)
@@ -101,4 +103,6 @@ async def send_message(
 ) -> MessageRead:
     await service.require_member(db, chat_id, user.id)
     message = await msg_service.create_message(db, chat_id, user, data)
-    return MessageRead.model_validate(message)
+    payload = MessageRead.model_validate(message)
+    await events.publish_message_new(db, chat_id, payload)
+    return payload

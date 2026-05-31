@@ -7,6 +7,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_verified_user
 from app.modules.messages import service
 from app.modules.messages.schemas import MessageRead, MessageUpdate
+from app.modules.realtime import events
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/messages", tags=["messages"])
@@ -20,7 +21,9 @@ async def edit_message(
     db: AsyncSession = Depends(get_db),
 ) -> MessageRead:
     message = await service.edit_message(db, message_id, user, data.content)
-    return MessageRead.model_validate(message)
+    payload = MessageRead.model_validate(message)
+    await events.publish_message_change(db, message.chat_id, payload, deleted=False)
+    return payload
 
 
 @router.delete("/{message_id}", response_model=MessageRead)
@@ -30,4 +33,6 @@ async def delete_message(
     db: AsyncSession = Depends(get_db),
 ) -> MessageRead:
     message = await service.delete_message(db, message_id, user)
-    return MessageRead.model_validate(message)
+    payload = MessageRead.model_validate(message)
+    await events.publish_message_change(db, message.chat_id, payload, deleted=True)
+    return payload

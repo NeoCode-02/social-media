@@ -84,6 +84,23 @@ DMs and groups only (channels are deferred). Messages use time-ordered **UUIDv7*
 ids, so the id is also the chronological cursor; pagination and unread counts compare
 ids directly. All chat endpoints require a verified email.
 
+#### Realtime (M3)
+
+Connect a WebSocket to `ws://localhost:8000/ws?token=<access_token>` (the vite dev
+server proxies `/ws`). Messages are **sent over REST** and **received over the socket**;
+typing and read receipts flow over the socket. Fan-out across API instances uses Redis
+pub/sub — the publisher computes recipients, every process delivers to its locally
+connected sockets.
+
+| Direction        | Event                                                   |
+| ---------------- | ------------------------------------------------------- |
+| server → client  | `message.new`, `message.edited`, `message.deleted`      |
+| server → client  | `typing`, `message.read`, `presence` (online/offline)   |
+| client → server  | `typing.start` / `typing.stop` `{chat_id}`              |
+| client → server  | `message.read` `{chat_id, last_read_message_id}`        |
+
+Presence is tracked per process; `last_seen` is persisted on disconnect.
+
 ### 3. Frontend
 
 ```bash
@@ -106,7 +123,7 @@ cd frontend && npm run lint && npm run typecheck && npm run test && npm run buil
 - **M0** Scaffold & infra ✅
 - **M1** Auth & users (email+password JWT, 6-digit verify, Google OAuth, avatars) ✅
 - **M2** Chats & messages (DM/group, REST, cursor pagination, read receipts) ✅
-- **M3** Realtime (WebSocket + Redis pub/sub: live messages, typing, presence)
+- **M3** Realtime (WebSocket + Redis pub/sub: live messages, typing, presence) ✅
 - **M4** Media in chat (presigned upload, thumbnails)
 - **M5** Hardening (rate limits, logging, prod build) + seams for Twitter feed
 
