@@ -153,7 +153,7 @@ async def upload_attachment(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (max 100MB)")
     mime = file.content_type or "application/octet-stream"
     meta = await anyio.to_thread.run_sync(
-        msg_service.process_blob, chat_id, data, mime, as_file
+        msg_service.process_blob, f"chat/{chat_id}", data, mime, as_file
     )
     attachment = await msg_service.record_attachment(
         db,

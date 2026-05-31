@@ -30,12 +30,13 @@ def _now() -> datetime:
 
 
 def process_blob(
-    chat_id: uuid.UUID, data: bytes, mime: str, as_file: bool = False
+    prefix: str, data: bytes, mime: str, as_file: bool = False
 ) -> dict[str, Any]:
     """Sync (CPU + network) blob work — call via a thread. Stores original +
-    (for inline images) a thumbnail and returns storage metadata. When as_file
-    is set the blob is treated as a plain download — no thumbnail/dimensions."""
-    key = f"chat/{chat_id}/{uuid.uuid4().hex}"
+    (for inline images) a thumbnail under ``prefix`` and returns storage
+    metadata. When as_file is set the blob is treated as a plain download —
+    no thumbnail/dimensions."""
+    key = f"{prefix}/{uuid.uuid4().hex}"
     width = height = None
     thumb_key = None
     if mime.startswith("image/") and not as_file:
@@ -44,7 +45,7 @@ def process_blob(
             width, height = dims
         thumb = make_thumbnail(data)
         if thumb:
-            thumb_key = f"chat/{chat_id}/thumb/{uuid.uuid4().hex}.jpg"
+            thumb_key = f"{prefix}/thumb/{uuid.uuid4().hex}.jpg"
             put_object(thumb_key, thumb, "image/jpeg")
     put_object(key, data, mime)
     return {"storage_key": key, "thumbnail_key": thumb_key, "width": width, "height": height}
@@ -52,7 +53,7 @@ def process_blob(
 
 async def record_attachment(
     db: AsyncSession,
-    chat_id: uuid.UUID,
+    chat_id: uuid.UUID | None,
     uploader: User,
     name: str,
     mime: str,

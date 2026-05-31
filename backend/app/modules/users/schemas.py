@@ -23,6 +23,11 @@ class UserProfile(UserPublic):
     created_at: datetime
     last_seen: datetime | None = None
 
+    followers_count: int = 0
+    following_count: int = 0
+    posts_count: int = 0
+    is_following: bool = False  # does the requester follow this user?
+
 
 class UserMe(UserProfile):
     email: str
