@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import get_current_user, get_current_verified_user
+from app.core.rate_limit import rate_limit
 from app.core.storage import presigned_put_url, public_url, put_object
 from app.modules.users.models import User
 from app.modules.users.schemas import (
@@ -28,7 +29,11 @@ _EXT = {
 }
 
 
-@router.get("/search", response_model=list[UserPublic])
+@router.get(
+    "/search",
+    response_model=list[UserPublic],
+    dependencies=[rate_limit(40, 60, "search")],
+)
 async def search_users(
     q: str = Query(min_length=1, max_length=32),
     user: User = Depends(get_current_verified_user),
