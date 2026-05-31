@@ -91,6 +91,7 @@ export function VoiceRecorder({ onSend, onCancel }: Props) {
         type="button"
         onClick={() => stop(false)}
         title="Cancel recording"
+        aria-label="Cancel recording"
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-faint transition hover:bg-cardhover hover:text-danger"
       >
         <Trash2 size={18} />
@@ -105,6 +106,7 @@ export function VoiceRecorder({ onSend, onCancel }: Props) {
         type="button"
         onClick={() => stop(true)}
         title="Send voice message"
+        aria-label="Send voice message"
         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-accentink transition hover:brightness-105 active:scale-95"
       >
         <Send size={18} />
