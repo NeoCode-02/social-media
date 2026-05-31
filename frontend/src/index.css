@@ -1,5 +1,58 @@
 @import 'tailwindcss';
 
+@theme {
+  /* Surfaces */
+  --color-bg: #0e0e11;
+  --color-elev: #16161a;
+  --color-card: #1e1e23;
+  --color-cardhover: #26262c;
+  --color-border: #2a2a31;
+
+  /* Text */
+  --color-text: #f2f2f4;
+  --color-muted: #9a9aa4;
+  --color-faint: #6b6b73;
+
+  /* Accents */
+  --color-accent: #d2f35a; /* lime — outgoing bubble + primary CTA */
+  --color-accentink: #18250a; /* ink on lime */
+  --color-violet: #7c6cff;
+  --color-online: #34d399;
+  --color-danger: #f4607a;
+
+  --font-sans: 'Inter Variable', system-ui, -apple-system, sans-serif;
+
+  --radius-xl2: 1.25rem;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -8px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 0 1px rgba(124, 108, 255, 0.25), 0 10px 40px -10px rgba(124, 108, 255, 0.35);
+
+  --animate-fade-up: fade-up 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pop: pop 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 html,
 body,
 #root {
@@ -8,5 +61,49 @@ body,
 }
 
 body {
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Slim, premium scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-cardhover);
+}
+
+/* Typing indicator dots */
+.typing-dot {
+  animation: typing 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
 }
