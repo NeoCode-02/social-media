@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { Check, CheckCheck } from 'lucide-react'
 
 import type { Message } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
@@ -8,9 +9,10 @@ interface Props {
   message: Message
   mine: boolean
   showSender: boolean
+  status?: 'sent' | 'read'
 }
 
-export function MessageBubble({ message, mine, showSender }: Props) {
+export function MessageBubble({ message, mine, showSender, status }: Props) {
   const deleted = Boolean(message.deleted_at)
 
   return (
@@ -49,12 +51,16 @@ export function MessageBubble({ message, mine, showSender }: Props) {
           )}
           <span
             className={cn(
-              'ml-2 inline-block translate-y-0.5 text-[10px]',
-              mine ? 'text-accentink/60' : 'text-faint',
+              'ml-2 inline-flex translate-y-0.5 items-center gap-0.5 text-[10px]',
+              mine ? 'text-accentink/70' : 'text-faint',
             )}
           >
             {message.edited_at && !deleted ? 'edited · ' : ''}
             {formatTime(message.created_at)}
+            {mine &&
+              !deleted &&
+              status &&
+              (status === 'read' ? <CheckCheck size={13} /> : <Check size={13} />)}
           </span>
         </div>
       </div>

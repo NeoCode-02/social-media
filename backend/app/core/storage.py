@@ -32,5 +32,15 @@ def presigned_put_url(key: str, content_type: str) -> str:
     )
 
 
+def put_object(key: str, data: bytes, content_type: str) -> None:
+    """Upload bytes to object storage (sync — call via a thread in async code)."""
+    get_s3_client().put_object(
+        Bucket=settings.s3_bucket,
+        Key=key,
+        Body=data,
+        ContentType=content_type,
+    )
+
+
 def public_url(key: str) -> str:
     return f"{settings.s3_public_url}/{settings.s3_bucket}/{key}"

@@ -1,12 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+import anyio
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.deps import get_current_user, get_current_verified_user
-from app.core.storage import presigned_put_url, public_url
+from app.core.storage import presigned_put_url, public_url, put_object
 from app.modules.users.models import User
 from app.modules.users.schemas import (
     AvatarUploadRequest,
@@ -73,3 +74,22 @@ async def create_avatar_upload_url(
         public_url=public_url(key),
         key=key,
     )
+
+
+@router.post("/me/avatar", response_model=UserMe)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if file.content_type not in _EXT:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported image type")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (max 5MB)")
+    key = f"avatars/{user.id}/{uuid.uuid4().hex}.{_EXT[file.content_type]}"
+    await anyio.to_thread.run_sync(put_object, key, data, file.content_type)
+    user.avatar_url = public_url(key)
+    await db.commit()
+    await db.refresh(user)
+    return user

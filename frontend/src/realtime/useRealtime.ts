@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { getAccessToken } from '@/api/client'
-import type { Message } from '@/api/types'
+import type { Chat, Message } from '@/api/types'
 import { useRealtimeStore } from '@/store/realtime'
 import { wsClient } from './ws'
 
@@ -54,6 +54,18 @@ export function useRealtime(): void {
           break
         }
         case 'message.read':
+          qc.setQueryData<Chat>(['chat', ev.chat_id], (c) =>
+            c
+              ? {
+                  ...c,
+                  members: c.members.map((m) =>
+                    m.user.id === ev.user_id
+                      ? { ...m, last_read_message_id: ev.last_read_message_id }
+                      : m,
+                  ),
+                }
+              : c,
+          )
           break
       }
     })
