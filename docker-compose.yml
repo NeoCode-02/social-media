@@ -1,5 +1,19 @@
 name: social-media
 
+# Shared env for the API and worker (in-container hostnames).
+x-backend-env: &backend-env
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/social_media
+  REDIS_URL: redis://redis:6379/0
+  CORS_ORIGINS: http://localhost:5173
+  SECRET_KEY: dev-insecure-secret-change-me-in-production-0123456789
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  S3_ENDPOINT_URL: http://minio:9000
+  S3_PUBLIC_URL: http://localhost:9000
+  S3_ACCESS_KEY: minioadmin
+  S3_SECRET_KEY: minioadmin
+  S3_BUCKET: media
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -76,14 +90,23 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/social_media
-      REDIS_URL: redis://redis:6379/0
-      CORS_ORIGINS: http://localhost:5173
+      <<: *backend-env
     ports:
       - '8000:8000'
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: ./backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      <<: *backend-env
+    volumes:
+      - ./backend:/app
+    command: arq app.worker.WorkerSettings
 
 volumes:
   pgdata:
