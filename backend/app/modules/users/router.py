@@ -21,7 +21,7 @@ from app.modules.users.schemas import (
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-MAX_AVATAR_BYTES = 15 * 1024 * 1024
+MAX_AVATAR_BYTES = 25 * 1024 * 1024
 
 _EXT = {
     "image/png": "png",
@@ -106,7 +106,7 @@ async def upload_avatar(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unsupported image type")
     data = await file.read()
     if len(data) > MAX_AVATAR_BYTES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (max 15MB)")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image too large (max 25MB)")
     key = f"avatars/{user.id}/{uuid.uuid4().hex}.{_EXT[file.content_type]}"
     await anyio.to_thread.run_sync(put_object, key, data, file.content_type)
     user.avatar_url = public_url(key)

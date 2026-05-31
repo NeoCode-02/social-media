@@ -5,9 +5,12 @@ import { useRef, useState } from 'react'
 
 import { sendMessage, uploadAttachment, type UploadOpts } from '@/api/chats'
 import type { Attachment, Message } from '@/api/types'
+import { apiError } from '@/lib/error'
 import { formatBytes, isImage, isVideo } from '@/lib/utils'
 import { wsClient } from '@/realtime/ws'
 import { VoiceRecorder } from './VoiceRecorder'
+
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 interface Props {
   chatId: string
@@ -21,6 +24,7 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
   const [sending, setSending] = useState(false)
   const [pending, setPending] = useState<Attachment | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [recording, setRecording] = useState(false)
   const mediaRef = useRef<HTMLInputElement>(null)
@@ -59,10 +63,17 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
+    setUploadError('')
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadError(`"${file.name}" is too large (max 100MB)`)
+      return
+    }
     setUploading(true)
     try {
       const { data } = await uploadAttachment(chatId, file, opts)
       setPending(data)
+    } catch (err) {
+      setUploadError(apiError(err))
     } finally {
       setUploading(false)
     }
@@ -119,6 +130,15 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
         </div>
       )}
 
+      {uploadError && (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl bg-danger/10 px-3 py-2 text-xs text-danger">
+          <span className="min-w-0 flex-1 truncate">{uploadError}</span>
+          <button onClick={() => setUploadError('')} className="shrink-0 hover:opacity-70">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {(pending || uploading) && (
         <div className="mb-2 flex items-center gap-3 rounded-2xl bg-card px-3 py-2">
           {uploading ? (
@@ -170,17 +190,19 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
             >
               <Paperclip size={18} />
             </button>
+            {menuOpen && (
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+            )}
             <AnimatePresence>
               {menuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                  <motion.div
-                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                    transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
-                    className="absolute bottom-12 left-0 z-20 w-44 overflow-hidden rounded-2xl border border-border bg-elev p-1.5 shadow-soft"
-                  >
+                <motion.div
+                  key="attach-menu"
+                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                  transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute bottom-12 left-0 z-20 w-44 overflow-hidden rounded-2xl border border-border bg-elev p-1.5 shadow-soft"
+                >
                     <button
                       type="button"
                       onClick={() => {
@@ -201,8 +223,7 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
                     >
                       <FileText size={16} className="text-violet" /> File
                     </button>
-                  </motion.div>
-                </>
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
