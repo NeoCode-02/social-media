@@ -56,5 +56,10 @@ def put_object(key: str, data: bytes, content_type: str) -> None:
     )
 
 
+def delete_object(key: str) -> None:
+    """Delete an object from storage (sync — call via a thread in async code)."""
+    get_s3_client().delete_object(Bucket=settings.s3_bucket, Key=key)
+
+
 def public_url(key: str) -> str:
     return f"{settings.s3_public_url}/{settings.s3_bucket}/{key}"
