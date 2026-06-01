@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Camera, X } from 'lucide-react'
+import { Camera, Lock, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { updateMe, uploadAvatar, type ProfileUpdate } from '@/api/users'
@@ -8,6 +8,7 @@ import { Avatar } from '@/components/Avatar'
 import { Button } from '@/components/Button'
 import { Input } from '@/components/Input'
 import { apiError } from '@/lib/error'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/store/auth'
 import { AvatarCropper } from './AvatarCropper'
 
@@ -21,6 +22,7 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
   const [bio, setBio] = useState(user?.bio ?? '')
   const [location, setLocation] = useState(user?.location ?? '')
   const [website, setWebsite] = useState(user?.website ?? '')
+  const [isPrivate, setIsPrivate] = useState(user?.is_private ?? false)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(user?.avatar_url ?? null)
   const [cropSrc, setCropSrc] = useState<string | null>(null)
@@ -63,6 +65,7 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
       if (nl !== (user.location ?? null)) patch.location = nl
       const nw = website.trim() || null
       if (nw !== (user.website ?? null)) patch.website = nw
+      if (isPrivate !== (user.is_private ?? false)) patch.is_private = isPrivate
 
       if (Object.keys(patch).length) {
         updated = (await updateMe(patch)).data
@@ -161,6 +164,33 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
             maxLength={255}
             placeholder="https://…"
           />
+
+          <button
+            type="button"
+            onClick={() => setIsPrivate((v) => !v)}
+            className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left transition hover:bg-cardhover"
+          >
+            <Lock size={16} className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">Private account</span>
+              <span className="block text-[11px] text-faint">
+                New followers must be approved before they can see your posts.
+              </span>
+            </span>
+            <span
+              className={cn(
+                'relative h-6 w-10 shrink-0 rounded-full transition',
+                isPrivate ? 'bg-accent' : 'bg-border',
+              )}
+            >
+              <span
+                className={cn(
+                  'absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all',
+                  isPrivate ? 'left-[18px]' : 'left-0.5',
+                )}
+              />
+            </span>
+          </button>
         </div>
 
         <p className="mt-3 text-xs text-faint">@{user?.username} · {user?.email}</p>
