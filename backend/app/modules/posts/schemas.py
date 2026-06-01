@@ -38,6 +38,7 @@ class PostRead(BaseModel):
     reply_count: int = 0
     repost_count: int = 0
     like_count: int = 0
+    view_count: int = 0
     liked_by_me: bool = False
     reposted_by_me: bool = False
 

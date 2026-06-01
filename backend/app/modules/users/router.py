@@ -13,6 +13,7 @@ from app.core.images import make_thumbnail
 from app.core.rate_limit import rate_limit
 from app.core.storage import delete_object, public_url, put_object
 from app.modules.follows import service as follows_service
+from app.modules.follows.models import ACCEPTED
 from app.modules.posts import service as posts_service
 from app.modules.users.models import User
 from app.modules.users.schemas import (
@@ -27,23 +28,27 @@ router = APIRouter(prefix="/users", tags=["users"])
 MAX_AVATAR_BYTES = 25 * 1024 * 1024
 
 
-async def _social(db: AsyncSession, target: User, viewer: User) -> dict[str, int | bool]:
-    """Followers/following/posts counts + whether viewer follows target."""
-    followers, following, posts, is_following = await asyncio.gather(
+async def _social(db: AsyncSession, target: User, viewer: User) -> dict[str, int | bool | str]:
+    """Counts + the viewer's follow relationship & post-visibility to target."""
+    is_self = viewer.id == target.id
+    followers, following, posts, state = await asyncio.gather(
         follows_service.followers_count(db, target.id),
         follows_service.following_count(db, target.id),
         posts_service.posts_count(db, target.id),
         (
-            follows_service.is_following(db, viewer.id, target.id)
-            if viewer.id != target.id
-            else asyncio.sleep(0, result=False)
+            asyncio.sleep(0, result="none")
+            if is_self
+            else follows_service.follow_state(db, viewer.id, target.id)
         ),
     )
+    is_following = state == ACCEPTED
     return {
         "followers_count": followers,
         "following_count": following,
         "posts_count": posts,
         "is_following": is_following,
+        "follow_state": state,
+        "can_view_posts": (not target.is_private) or is_self or is_following,
     }
 
 _EXT = {
@@ -79,7 +84,9 @@ async def get_me(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserMe:
-    return UserMe.model_validate(user).model_copy(update=await _social(db, user, user))
+    social = await _social(db, user, user)
+    social["pending_requests"] = await follows_service.pending_count(db, user.id)
+    return UserMe.model_validate(user).model_copy(update=social)
 
 
 @router.get("/{user_id}", response_model=UserProfile)
@@ -91,7 +98,14 @@ async def get_user_profile(
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    return UserProfile.model_validate(user).model_copy(update=await _social(db, user, viewer))
+    social = await _social(db, user, viewer)
+    profile = UserProfile.model_validate(user).model_copy(update=social)
+    # Hide rich details from outsiders of a private account.
+    if not social["can_view_posts"]:
+        profile = profile.model_copy(
+            update={"bio": None, "location": None, "website": None, "last_seen": None}
+        )
+    return profile
 
 
 @router.patch("/me", response_model=UserMe)

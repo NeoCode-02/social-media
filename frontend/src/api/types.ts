@@ -5,21 +5,27 @@ export interface UserPublic {
   avatar_url: string | null
 }
 
+export type FollowState = 'none' | 'pending' | 'accepted'
+
 export interface UserProfile extends UserPublic {
   bio: string | null
   location: string | null
   website: string | null
   created_at: string
   last_seen: string | null
+  is_private: boolean
   followers_count: number
   following_count: number
   posts_count: number
   is_following: boolean
+  follow_state: FollowState
+  can_view_posts: boolean
 }
 
 export interface UserMe extends UserProfile {
   email: string
   email_verified: boolean
+  pending_requests: number
 }
 
 export interface Attachment {
@@ -86,6 +92,7 @@ export interface Post {
   reply_count: number
   repost_count: number
   like_count: number
+  view_count: number
   liked_by_me: boolean
   reposted_by_me: boolean
   repost_of: Post | null

@@ -16,6 +16,8 @@ class User(UUIDPrimaryKey, Timestamped, Base):
     # Nullable for OAuth-only accounts that never set a password.
     password_hash: Mapped[str | None] = mapped_column(sa.String(255), default=None)
     email_verified: Mapped[bool] = mapped_column(sa.Boolean, default=False)
+    # Private accounts must approve each follower before posts become visible.
+    is_private: Mapped[bool] = mapped_column(sa.Boolean, default=False, server_default=sa.false())
     avatar_url: Mapped[str | None] = mapped_column(sa.String(512), default=None)
     bio: Mapped[str | None] = mapped_column(sa.String(280), default=None)
     location: Mapped[str | None] = mapped_column(sa.String(64), default=None)

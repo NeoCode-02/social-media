@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Heart, MessageCircle, Repeat2, Trash2 } from 'lucide-react'
+import { BarChart3, Heart, MessageCircle, Repeat2, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -230,7 +230,12 @@ export function PostCard({ post, emphasis }: Props) {
               {compactNumber(post.like_count)}
             </button>
 
-            <span className="w-8" />
+            <span className="flex items-center gap-1.5 text-xs" title={`${post.view_count} views`}>
+              <span className="flex h-8 w-8 items-center justify-center">
+                <BarChart3 size={16} />
+              </span>
+              {compactNumber(post.view_count)}
+            </span>
           </div>
         )}
       </div>

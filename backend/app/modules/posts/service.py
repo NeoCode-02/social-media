@@ -6,9 +6,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.follows.models import Follow
+from app.modules.follows.models import ACCEPTED, Follow
 from app.modules.messages.models import Attachment
-from app.modules.posts.models import Like, Post
+from app.modules.posts.models import Like, Post, PostView
 from app.modules.posts.schemas import PostCreate, PostPage, PostRead
 from app.modules.users.models import User
 
@@ -137,11 +137,13 @@ async def unrepost(db: AsyncSession, user: User, post_id: uuid.UUID) -> None:
 
 async def _counts(
     db: AsyncSession, ids: list[uuid.UUID]
-) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, int], dict[uuid.UUID, int]]:
-    """Likes / replies / reposts counts for a batch of post ids (drift-free)."""
+) -> tuple[
+    dict[uuid.UUID, int], dict[uuid.UUID, int], dict[uuid.UUID, int], dict[uuid.UUID, int]
+]:
+    """Likes / replies / reposts / views counts for a batch of ids (drift-free)."""
     empty: dict[uuid.UUID, int] = {}
     if not ids:
-        return empty, dict(empty), dict(empty)
+        return empty, dict(empty), dict(empty), dict(empty)
     like_rows = (
         await db.execute(
             select(Like.post_id, func.count()).where(Like.post_id.in_(ids)).group_by(Like.post_id)
@@ -161,10 +163,29 @@ async def _counts(
             .group_by(Post.repost_of_id)
         )
     ).all()
+    view_rows = (
+        await db.execute(
+            select(PostView.post_id, func.count())
+            .where(PostView.post_id.in_(ids))
+            .group_by(PostView.post_id)
+        )
+    ).all()
     likes = {pid: n for pid, n in like_rows}
     replies = {pid: n for pid, n in reply_rows if pid is not None}
     reposts = {pid: n for pid, n in repost_rows if pid is not None}
-    return likes, replies, reposts
+    views = {pid: n for pid, n in view_rows}
+    return likes, replies, reposts, views
+
+
+async def record_view(db: AsyncSession, viewer_id: uuid.UUID, post_id: uuid.UUID) -> None:
+    """Best-effort unique-view record (deduped by composite PK)."""
+    existing = await db.get(PostView, {"post_id": post_id, "viewer_id": viewer_id})
+    if existing is None:
+        db.add(PostView(post_id=post_id, viewer_id=viewer_id))
+        try:
+            await db.commit()
+        except sa.exc.IntegrityError:
+            await db.rollback()
 
 
 async def _viewer_flags(
@@ -208,7 +229,7 @@ async def build_posts(db: AsyncSession, posts: list[Post], viewer: User) -> list
 
     by_id = {p.id: p for p in [*posts, *embeds]}
     all_ids = list(by_id.keys())
-    likes, replies, reposts = await _counts(db, all_ids)
+    likes, replies, reposts, views = await _counts(db, all_ids)
     liked_set, reposted_set = await _viewer_flags(db, viewer.id, all_ids)
 
     def to_read(p: Post, depth: int) -> PostRead:
@@ -216,6 +237,7 @@ async def build_posts(db: AsyncSession, posts: list[Post], viewer: User) -> list
         pr.like_count = likes.get(p.id, 0)
         pr.reply_count = replies.get(p.id, 0)
         pr.repost_count = reposts.get(p.id, 0)
+        pr.view_count = views.get(p.id, 0)
         pr.liked_by_me = p.id in liked_set
         pr.reposted_by_me = p.id in reposted_set
         if depth > 0:
@@ -230,6 +252,7 @@ async def build_posts(db: AsyncSession, posts: list[Post], viewer: User) -> list
 
 async def get_post(db: AsyncSession, post_id: uuid.UUID, viewer: User) -> PostRead:
     post = await _alive(db, post_id)
+    await record_view(db, viewer.id, post_id)
     return (await build_posts(db, [post], viewer))[0]
 
 
@@ -244,7 +267,9 @@ async def home_timeline(
     db: AsyncSession, viewer: User, limit: int, before: uuid.UUID | None
 ) -> PostPage:
     limit = max(1, min(limit, MAX_PAGE))
-    followees = select(Follow.followee_id).where(Follow.follower_id == viewer.id)
+    followees = select(Follow.followee_id).where(
+        Follow.follower_id == viewer.id, Follow.status == ACCEPTED
+    )
     q = (
         select(Post)
         .where(
@@ -280,6 +305,14 @@ async def global_timeline(
     return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
 
 
+async def can_view_posts(db: AsyncSession, author: User, viewer: User) -> bool:
+    """Private accounts only expose posts to themselves + accepted followers."""
+    if not author.is_private or author.id == viewer.id:
+        return True
+    row = await db.get(Follow, {"follower_id": viewer.id, "followee_id": author.id})
+    return row is not None and row.status == ACCEPTED
+
+
 async def user_feed(
     db: AsyncSession,
     author_id: uuid.UUID,
@@ -287,6 +320,11 @@ async def user_feed(
     limit: int,
     before: uuid.UUID | None,
 ) -> PostPage:
+    author = await db.get(User, author_id)
+    if author is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if not await can_view_posts(db, author, viewer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is private")
     limit = max(1, min(limit, MAX_PAGE))
     q = (
         select(Post)
