@@ -120,14 +120,24 @@ async def get_ws_ticket(user: User = Depends(get_current_user)) -> TicketRespons
 # --- Google OAuth ---------------------------------------------------------
 
 
+def _require_google_configured() -> None:
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in is not configured",
+        )
+
+
 @router.get("/google/login")
 async def google_login(request: Request):
+    _require_google_configured()
     redirect_uri = f"{settings.oauth_redirect_base}{settings.api_prefix}/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/google/callback")
 async def google_callback(request: Request, db: AsyncSession = Depends(get_db)):
+    _require_google_configured()
     token = await oauth.google.authorize_access_token(request)
     info = token.get("userinfo") or {}
     sub, email = info.get("sub"), info.get("email")

@@ -15,6 +15,9 @@ export const updateMe = (body: ProfileUpdate) => api.patch<UserMe>('/users/me', 
 
 export const getUser = (id: string) => api.get<UserProfile>(`/users/${id}`)
 
+export const getUserByUsername = (username: string) =>
+  api.get<UserProfile>(`/users/by-username/${encodeURIComponent(username)}`)
+
 export const uploadAvatar = (file: File) => {
   const form = new FormData()
   form.append('file', file)

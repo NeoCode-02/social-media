@@ -19,7 +19,25 @@ export const getPost = (id: string) => api.get<Post>(`/posts/${id}`)
 
 export const createPost = (body: PostCreate) => api.post<Post>('/posts', body)
 
+export const editPost = (id: string, text: string | null) =>
+  api.patch<Post>(`/posts/${id}`, { text })
+
 export const deletePost = (id: string) => api.delete<Post>(`/posts/${id}`)
+
+export const searchPosts = (q: string, before?: string) =>
+  api.get<PostPage>('/posts/search', { params: { q, before, limit: 20 } })
+
+export const hashtagFeed = (tag: string, before?: string) =>
+  api.get<PostPage>(`/posts/hashtag/${encodeURIComponent(tag)}`, {
+    params: { before, limit: 20 },
+  })
+
+export interface TrendingTag {
+  tag: string
+  count: number
+}
+
+export const trendingHashtags = () => api.get<TrendingTag[]>('/posts/trending/hashtags')
 
 export const listReplies = (id: string, after?: string) =>
   api.get<PostPage>(`/posts/${id}/replies`, { params: { after, limit: 30 } })

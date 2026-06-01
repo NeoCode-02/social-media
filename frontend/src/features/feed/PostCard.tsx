@@ -1,5 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { BarChart3, Heart, MessageCircle, Repeat2, Trash2 } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
+import { BarChart3, Heart, MessageCircle, Pencil, Repeat2, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -11,8 +13,10 @@ import {
 } from '@/api/posts'
 import type { Post } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
+import { RichText } from '@/components/RichText'
 import { cn, formatRelative } from '@/lib/utils'
 import { useAuth } from '@/store/auth'
+import { EditPostDialog } from './EditPostDialog'
 import { PostAttachments } from './PostAttachments'
 import { patchAllPosts } from './postCache'
 
@@ -35,6 +39,7 @@ export function PostCard({ post, emphasis }: Props) {
   const me = useAuth((s) => s.user)
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
 
   // A bare repost renders as the original with a "reposted" ribbon on top.
   if (isPureRepost(post) && post.repost_of) {
@@ -134,14 +139,31 @@ export function PostCard({ post, emphasis }: Props) {
               <span className="shrink-0 text-faint">{formatRelative(post.created_at)}</span>
             </>
           )}
+          {post.edited_at && !deleted && (
+            <span className="shrink-0 text-faint" title="Edited">
+              · edited
+            </span>
+          )}
           {mine && !deleted && (
-            <button
-              onClick={onDelete}
-              className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-faint opacity-0 transition hover:bg-cardhover hover:text-danger group-hover:opacity-100"
-              title="Delete"
-            >
-              <Trash2 size={14} />
-            </button>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setEditing(true)
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-faint transition hover:bg-cardhover hover:text-accent"
+                title="Edit"
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                onClick={onDelete}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-faint transition hover:bg-cardhover hover:text-danger"
+                title="Delete"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           )}
         </div>
 
@@ -158,7 +180,7 @@ export function PostCard({ post, emphasis }: Props) {
           <>
             {post.text && (
               <p className={cn('mt-1 whitespace-pre-wrap break-words', emphasis ? 'text-[15px]' : 'text-sm')}>
-                {post.text}
+                <RichText text={post.text} />
               </p>
             )}
             {post.attachments.length > 0 && <PostAttachments attachments={post.attachments} />}
@@ -239,6 +261,10 @@ export function PostCard({ post, emphasis }: Props) {
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {editing && <EditPostDialog post={post} onClose={() => setEditing(false)} />}
+      </AnimatePresence>
     </article>
   )
 }
