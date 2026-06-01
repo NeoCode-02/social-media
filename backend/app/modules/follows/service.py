@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.follows.models import ACCEPTED, PENDING, Follow
+from app.modules.relations import service as relations
 from app.modules.users.models import User
 
 
@@ -15,6 +16,8 @@ async def follow(db: AsyncSession, follower: User, followee_id: uuid.UUID) -> st
     target = await db.get(User, followee_id)
     if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if await relations.blocked_pair(db, follower.id, followee_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
     existing = await db.get(Follow, {"follower_id": follower.id, "followee_id": followee_id})
     if existing is not None:
         return existing.status

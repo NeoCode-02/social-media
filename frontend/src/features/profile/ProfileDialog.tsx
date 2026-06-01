@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Camera, Lock, X } from 'lucide-react'
+import { Camera, Lock, ShieldOff, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 
 import { updateMe, uploadAvatar, type ProfileUpdate } from '@/api/users'
@@ -11,6 +11,7 @@ import { apiError } from '@/lib/error'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/store/auth'
 import { AvatarCropper } from './AvatarCropper'
+import { RelationsManager } from './RelationsManager'
 
 export function ProfileDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
@@ -28,6 +29,7 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
   const [cropSrc, setCropSrc] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [showRelations, setShowRelations] = useState(false)
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
@@ -193,7 +195,15 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <p className="mt-3 text-xs text-faint">@{user?.username} · {user?.email}</p>
+        <button
+          type="button"
+          onClick={() => setShowRelations(true)}
+          className="mt-3 flex w-full items-center gap-2.5 rounded-xl px-1 py-2 text-left text-sm text-muted transition hover:text-text"
+        >
+          <ShieldOff size={16} /> Blocked &amp; muted accounts
+        </button>
+
+        <p className="mt-2 text-xs text-faint">@{user?.username} · {user?.email}</p>
 
         {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 
@@ -218,6 +228,10 @@ export function ProfileDialog({ onClose }: { onClose: () => void }) {
             onDone={onCropped}
           />
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showRelations && <RelationsManager onClose={() => setShowRelations(false)} />}
       </AnimatePresence>
     </motion.div>
   )

@@ -30,6 +30,8 @@ class UserProfile(UserPublic):
     is_following: bool = False  # requester has an accepted follow of this user
     follow_state: str = "none"  # "none" | "pending" | "accepted"
     can_view_posts: bool = True  # False → private + requester not an accepted follower
+    is_blocked: bool = False  # requester has blocked this user
+    is_muted: bool = False  # requester has muted this user
 
 
 class UserMe(UserProfile):

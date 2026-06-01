@@ -23,6 +23,7 @@ from app.modules.posts.schemas import (
     TrendingTag,
 )
 from app.modules.realtime import events
+from app.modules.relations import service as relations
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -94,6 +95,10 @@ async def create_post(
     user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> PostRead:
+    if data.parent_id is not None:
+        parent = await db.get(Post, data.parent_id)
+        if parent is not None and await relations.blocked_pair(db, user.id, parent.author_id):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
     post = await service.create_post(db, user, data)
     payload = (await service.build_posts(db, [post], user))[0]
     if post.parent_id is None:
@@ -207,8 +212,10 @@ async def like_post(
     user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await service.like(db, user, post_id)
     post = await db.get(Post, post_id)
+    if post is not None and await relations.blocked_pair(db, user.id, post.author_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
+    await service.like(db, user, post_id)
     if post is not None:
         await notif_service.notify(
             db,

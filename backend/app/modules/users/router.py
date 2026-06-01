@@ -15,6 +15,7 @@ from app.core.storage import delete_object, public_url, put_object
 from app.modules.follows import service as follows_service
 from app.modules.follows.models import ACCEPTED
 from app.modules.posts import service as posts_service
+from app.modules.relations import service as relations
 from app.modules.users.models import User
 from app.modules.users.schemas import (
     UserMe,
@@ -42,13 +43,17 @@ async def _social(db: AsyncSession, target: User, viewer: User) -> dict[str, int
         ),
     )
     is_following = state == ACCEPTED
+    is_blocked = False if is_self else await relations.is_blocking(db, viewer.id, target.id)
+    is_muted = False if is_self else await relations.is_muting(db, viewer.id, target.id)
     return {
         "followers_count": followers,
         "following_count": following,
         "posts_count": posts,
         "is_following": is_following,
         "follow_state": state,
-        "can_view_posts": (not target.is_private) or is_self or is_following,
+        "can_view_posts": ((not target.is_private) or is_self or is_following) and not is_blocked,
+        "is_blocked": is_blocked,
+        "is_muted": is_muted,
     }
 
 _EXT = {
@@ -70,12 +75,11 @@ async def search_users(
     user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[User]:
-    rows = await db.scalars(
-        select(User)
-        .where(User.id != user.id, User.username.ilike(f"%{q}%"))
-        .order_by(User.username)
-        .limit(10)
-    )
+    excluded = await relations.blocked_ids(db, user.id)
+    stmt = select(User).where(User.id != user.id, User.username.ilike(f"%{q}%"))
+    if excluded:
+        stmt = stmt.where(User.id.notin_(excluded))
+    rows = await db.scalars(stmt.order_by(User.username).limit(10))
     return list(rows.all())
 
 
@@ -90,6 +94,10 @@ async def get_me(
 
 
 async def _profile(db: AsyncSession, user: User, viewer: User) -> UserProfile:
+    # The blocked party can't see the blocker at all; the blocker can still
+    # see the (locked) profile so they can unblock from it.
+    if viewer.id != user.id and await relations.is_blocking(db, user.id, viewer.id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
     social = await _social(db, user, viewer)
     profile = UserProfile.model_validate(user).model_copy(update=social)
     # Hide rich details from outsiders of a private account.

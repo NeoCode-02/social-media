@@ -20,6 +20,8 @@ export interface UserProfile extends UserPublic {
   is_following: boolean
   follow_state: FollowState
   can_view_posts: boolean
+  is_blocked: boolean
+  is_muted: boolean
 }
 
 export interface UserMe extends UserProfile {

@@ -8,6 +8,7 @@ from app.modules.notifications.schemas import NotificationPage, NotificationRead
 from app.modules.posts.models import Post
 from app.modules.posts.text import extract_mentions
 from app.modules.realtime import events
+from app.modules.relations import service as relations
 from app.modules.users.models import User
 from app.modules.users.schemas import UserPublic
 
@@ -46,6 +47,8 @@ async def notify(
 ) -> None:
     """Create a notification (skipping self-actions) and push it in realtime."""
     if recipient_id == actor_id:
+        return
+    if await relations.blocked_pair(db, recipient_id, actor_id):
         return
     if unique:
         post_match = (
