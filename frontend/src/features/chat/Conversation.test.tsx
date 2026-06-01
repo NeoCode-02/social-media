@@ -37,7 +37,7 @@ import { Conversation } from './Conversation'
 describe('Conversation', () => {
   beforeEach(() => {
     useAuth.setState({
-      user: { id: 'me', username: 'me', display_name: 'Me', avatar_url: null, email: 'me@example.com', email_verified: true, created_at: '', bio: null, location: null, website: null, last_seen: null, followers_count: 0, following_count: 0, posts_count: 0, is_following: false },
+      user: { id: 'me', username: 'me', display_name: 'Me', avatar_url: null, email: 'me@example.com', email_verified: true, created_at: '', bio: null, location: null, website: null, last_seen: null, is_private: false, followers_count: 0, following_count: 0, posts_count: 0, is_following: false, follow_state: 'none', can_view_posts: true, pending_requests: 0 },
       status: 'authed',
     })
     useRealtimeStore.setState({ online: {}, typing: {} })

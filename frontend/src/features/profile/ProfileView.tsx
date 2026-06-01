@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Link2, MapPin, MessageSquare, X } from 'lucide-react'
+import { Link2, Lock, MapPin, MessageSquare, UserRound, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 import { createDm } from '@/api/chats'
@@ -76,8 +76,23 @@ export function ProfileView({ userId, onClose }: Props) {
                 </div>
               </div>
 
-              <h2 className="text-lg font-semibold">{profile.display_name}</h2>
+              <h2 className="flex items-center gap-1.5 text-lg font-semibold">
+                {profile.display_name}
+                {profile.is_private && <Lock size={14} className="text-faint" />}
+              </h2>
               <p className="text-sm text-faint">@{profile.username}</p>
+
+              <div className="mt-2 flex gap-4 text-sm">
+                <span>
+                  <b>{profile.posts_count}</b> <span className="text-faint">Posts</span>
+                </span>
+                <span>
+                  <b>{profile.followers_count}</b> <span className="text-faint">Followers</span>
+                </span>
+                <span>
+                  <b>{profile.following_count}</b> <span className="text-faint">Following</span>
+                </span>
+              </div>
 
               {profile.bio && (
                 <p className="mt-3 whitespace-pre-wrap text-sm text-text">{profile.bio}</p>
@@ -104,11 +119,23 @@ export function ProfileView({ userId, onClose }: Props) {
                 )}
               </div>
 
-              {me?.id !== profile.id && (
-                <Button onClick={onMessage} className="mt-5 w-full">
-                  <MessageSquare size={16} /> Message
+              <div className="mt-5 flex gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    onClose()
+                    navigate(`/u/${profile.id}`)
+                  }}
+                  className="flex-1"
+                >
+                  <UserRound size={16} /> View profile
                 </Button>
-              )}
+                {me?.id !== profile.id && (
+                  <Button onClick={onMessage} className="flex-1">
+                    <MessageSquare size={16} /> Message
+                  </Button>
+                )}
+              </div>
             </>
           )}
         </div>

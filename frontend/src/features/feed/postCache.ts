@@ -33,19 +33,23 @@ function mapPage(data: InfiniteData<PostPage> | undefined, id: string, fn: PostF
 /** Patch a post everywhere it may be cached (timeline, profile feeds, threads). */
 export function patchAllPosts(qc: QueryClient, id: string, fn: PostFn): void {
   qc.setQueriesData<InfiniteData<PostPage>>({ queryKey: ['timeline'] }, (d) => mapPage(d, id, fn))
+  qc.setQueriesData<InfiniteData<PostPage>>({ queryKey: ['globalFeed'] }, (d) => mapPage(d, id, fn))
   qc.setQueriesData<InfiniteData<PostPage>>({ queryKey: ['userFeed'] }, (d) => mapPage(d, id, fn))
   qc.setQueriesData<InfiniteData<PostPage>>({ queryKey: ['replies'] }, (d) => mapPage(d, id, fn))
   qc.setQueriesData<Post>({ queryKey: ['post'] }, (p) => (p ? applyToPost(p, id, fn) : p))
 }
 
-/** Insert a freshly created/received post at the top of the home timeline. */
+/** Insert a freshly created/received post at the top of the home + global feeds. */
 export function prependToTimeline(qc: QueryClient, post: Post): void {
-  qc.setQueryData<InfiniteData<PostPage>>(['timeline'], (old) => {
-    if (!old || old.pages.length === 0) return old
-    if (old.pages.some((pg) => pg.posts.some((p) => p.id === post.id))) return old
-    const pages = old.pages.map((pg, i) =>
-      i === 0 ? { ...pg, posts: [post, ...pg.posts] } : pg,
-    )
-    return { ...old, pages }
-  })
+  const prepend = (key: string) =>
+    qc.setQueryData<InfiniteData<PostPage>>([key], (old) => {
+      if (!old || old.pages.length === 0) return old
+      if (old.pages.some((pg) => pg.posts.some((p) => p.id === post.id))) return old
+      const pages = old.pages.map((pg, i) =>
+        i === 0 ? { ...pg, posts: [post, ...pg.posts] } : pg,
+      )
+      return { ...old, pages }
+    })
+  prepend('timeline')
+  prepend('globalFeed')
 }

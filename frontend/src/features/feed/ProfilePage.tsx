@@ -1,14 +1,24 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence } from 'framer-motion'
-import { ArrowLeft, CalendarDays, Link2, Loader2, MapPin, MessageSquare } from 'lucide-react'
+import {
+  ArrowLeft,
+  CalendarDays,
+  Link2,
+  Loader2,
+  Lock,
+  MapPin,
+  MessageSquare,
+  UserCheck,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { createDm } from '@/api/chats'
-import { followUser, unfollowUser } from '@/api/follows'
+import { followUser, listFollowRequests, unfollowUser } from '@/api/follows'
 import { getUser } from '@/api/users'
 import type { UserProfile } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
+import { FollowRequests } from '@/features/profile/FollowRequests'
 import { ProfileDialog } from '@/features/profile/ProfileDialog'
 import { useAuth } from '@/store/auth'
 import { PostFeed } from './PostFeed'
@@ -24,34 +34,76 @@ export function ProfilePage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
+  const [showRequests, setShowRequests] = useState(false)
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['user', userId],
     queryFn: async () => (await getUser(userId)).data,
     enabled: Boolean(userId),
   })
+  const isMe = me?.id === userId
+  const canViewPosts = Boolean(profile?.can_view_posts)
   const feed = useUserFeed(userId)
   const posts = (feed.data?.pages ?? []).flatMap((p) => p.posts)
-  const isMe = me?.id === userId
+
+  // Pending follow-request count (own profile only).
+  const requests = useQuery({
+    queryKey: ['followRequests'],
+    queryFn: () => listFollowRequests().then((r) => r.data),
+    enabled: isMe,
+  })
+  const pendingCount = requests.data?.length ?? 0
+
+  function patchProfile(update: Partial<UserProfile>) {
+    qc.setQueryData<UserProfile>(['user', userId], (u) => (u ? { ...u, ...update } : u))
+  }
 
   async function toggleFollow() {
     if (!profile) return
-    const following = profile.is_following
-    qc.setQueryData<UserProfile>(['user', userId], (u) =>
-      u
-        ? { ...u, is_following: !following, followers_count: u.followers_count + (following ? -1 : 1) }
-        : u,
-    )
+    const state = profile.follow_state
+
+    if (state === 'accepted' || state === 'pending') {
+      // Unfollow, or cancel a still-pending request.
+      patchProfile({
+        is_following: false,
+        follow_state: 'none',
+        followers_count: profile.followers_count - (state === 'accepted' ? 1 : 0),
+        can_view_posts: profile.is_private ? false : profile.can_view_posts,
+      })
+      try {
+        await unfollowUser(userId)
+        qc.invalidateQueries({ queryKey: ['userFeed', userId] })
+      } catch {
+        qc.invalidateQueries({ queryKey: ['user', userId] })
+      }
+      return
+    }
+
+    // Follow a public account (instant) or request a private one (pending).
     try {
-      await (following ? unfollowUser(userId) : followUser(userId))
+      const { data } = await followUser(userId)
+      const accepted = data.status === 'accepted'
+      patchProfile({
+        follow_state: data.status,
+        is_following: accepted,
+        followers_count: profile.followers_count + (accepted ? 1 : 0),
+        can_view_posts: accepted ? true : profile.can_view_posts,
+      })
+      if (accepted) {
+        qc.invalidateQueries({ queryKey: ['userFeed', userId] })
+        qc.invalidateQueries({ queryKey: ['timeline'] })
+      }
     } catch {
-      qc.setQueryData<UserProfile>(['user', userId], (u) =>
-        u
-          ? { ...u, is_following: following, followers_count: u.followers_count + (following ? 1 : -1) }
-          : u,
-      )
+      qc.invalidateQueries({ queryKey: ['user', userId] })
     }
   }
+
+  const followLabel =
+    profile?.follow_state === 'accepted'
+      ? 'Following'
+      : profile?.follow_state === 'pending'
+        ? 'Requested'
+        : 'Follow'
 
   async function onMessage() {
     const { data } = await createDm(userId)
@@ -90,12 +142,26 @@ export function ProfilePage() {
                   />
                 </div>
                 {isMe ? (
-                  <button
-                    onClick={() => setEditing(true)}
-                    className="rounded-full border border-border px-4 py-2 text-sm font-semibold transition hover:bg-cardhover"
-                  >
-                    Edit profile
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowRequests(true)}
+                      title="Follow requests"
+                      className="relative flex h-10 w-10 items-center justify-center rounded-full border border-border transition hover:bg-cardhover"
+                    >
+                      <UserCheck size={17} />
+                      {pendingCount > 0 && (
+                        <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1 text-[11px] font-bold text-accentink">
+                          {pendingCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setEditing(true)}
+                      className="rounded-full border border-border px-4 py-2 text-sm font-semibold transition hover:bg-cardhover"
+                    >
+                      Edit profile
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <button
@@ -108,18 +174,23 @@ export function ProfilePage() {
                     <button
                       onClick={toggleFollow}
                       className={
-                        profile.is_following
+                        profile.follow_state !== 'none'
                           ? 'rounded-full border border-border px-4 py-2 text-sm font-semibold transition hover:border-danger hover:text-danger'
                           : 'rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accentink transition hover:brightness-105'
                       }
                     >
-                      {profile.is_following ? 'Following' : 'Follow'}
+                      {followLabel}
                     </button>
                   </div>
                 )}
               </div>
 
-              <h2 className="text-xl font-bold">{profile.display_name}</h2>
+              <h2 className="flex items-center gap-1.5 text-xl font-bold">
+                {profile.display_name}
+                {profile.is_private && (
+                  <Lock size={15} className="text-faint" aria-label="Private account" />
+                )}
+              </h2>
               <p className="text-sm text-faint">@{profile.username}</p>
 
               {profile.bio && <p className="mt-2 whitespace-pre-wrap text-sm">{profile.bio}</p>}
@@ -160,20 +231,37 @@ export function ProfilePage() {
             </div>
 
             <div className="border-t border-border">
-              <PostFeed
-                posts={posts}
-                isLoading={feed.isLoading}
-                hasMore={Boolean(feed.hasNextPage)}
-                loadingMore={feed.isFetchingNextPage}
-                onLoadMore={feed.fetchNextPage}
-                emptyText={isMe ? "You haven't posted yet." : 'No posts yet.'}
-              />
+              {canViewPosts ? (
+                <PostFeed
+                  posts={posts}
+                  isLoading={feed.isLoading}
+                  hasMore={Boolean(feed.hasNextPage)}
+                  loadingMore={feed.isFetchingNextPage}
+                  onLoadMore={feed.fetchNextPage}
+                  emptyText={isMe ? "You haven't posted yet." : 'No posts yet.'}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card">
+                    <Lock size={20} className="text-faint" />
+                  </div>
+                  <p className="text-sm font-semibold">This account is private</p>
+                  <p className="max-w-xs text-xs text-faint">
+                    {profile.follow_state === 'pending'
+                      ? 'Your follow request is pending approval. You’ll see their posts once accepted.'
+                      : `Follow @${profile.username} to see their posts.`}
+                  </p>
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
 
       <AnimatePresence>{editing && <ProfileDialog onClose={() => setEditing(false)} />}</AnimatePresence>
+      <AnimatePresence>
+        {showRequests && <FollowRequests onClose={() => setShowRequests(false)} />}
+      </AnimatePresence>
     </div>
   )
 }

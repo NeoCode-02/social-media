@@ -56,3 +56,16 @@ class Like(Timestamped, Base):
     post_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True, index=True
     )
+
+
+class PostView(Timestamped, Base):
+    """One row per (viewer, post) — counted as a unique impression."""
+
+    __tablename__ = "post_views"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    viewer_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
