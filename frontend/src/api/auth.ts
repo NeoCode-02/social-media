@@ -22,4 +22,13 @@ export const logout = () => api.post('/auth/logout')
 
 export const getMe = () => api.get<UserMe>('/users/me')
 
+export const getWsTicket = async (): Promise<string | null> => {
+  try {
+    const { data } = await api.get<{ ticket: string }>('/auth/ws-ticket')
+    return data.ticket
+  } catch {
+    return null
+  }
+}
+
 export const googleLoginUrl = '/api/auth/google/login'

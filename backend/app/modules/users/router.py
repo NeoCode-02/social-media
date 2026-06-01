@@ -11,13 +11,11 @@ from app.core.db import get_db
 from app.core.deps import get_current_user, get_current_verified_user
 from app.core.images import make_thumbnail
 from app.core.rate_limit import rate_limit
-from app.core.storage import delete_object, presigned_put_url, public_url, put_object
+from app.core.storage import delete_object, public_url, put_object
 from app.modules.follows import service as follows_service
 from app.modules.posts import service as posts_service
 from app.modules.users.models import User
 from app.modules.users.schemas import (
-    AvatarUploadRequest,
-    AvatarUploadResponse,
     UserMe,
     UserProfile,
     UserPublic,
@@ -109,19 +107,6 @@ async def update_me(
     await db.refresh(user)
     return user
 
-
-@router.post("/me/avatar-url", response_model=AvatarUploadResponse)
-async def create_avatar_upload_url(
-    data: AvatarUploadRequest,
-    user: User = Depends(get_current_user),
-) -> AvatarUploadResponse:
-    ext = _EXT[data.content_type]
-    key = f"avatars/{user.id}/{uuid.uuid4().hex}.{ext}"
-    return AvatarUploadResponse(
-        upload_url=presigned_put_url(key, data.content_type),
-        public_url=public_url(key),
-        key=key,
-    )
 
 
 def _process_avatar(data: bytes, old_url: str | None) -> str:
