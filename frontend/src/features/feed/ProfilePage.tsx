@@ -22,12 +22,9 @@ import { FollowRequests } from '@/features/profile/FollowRequests'
 import { ProfileDialog } from '@/features/profile/ProfileDialog'
 import { UserMenu } from '@/features/profile/UserMenu'
 import { useAuth } from '@/store/auth'
+import { websiteHref } from '@/lib/utils'
 import { PostFeed } from './PostFeed'
 import { useUserFeed } from './useFeed'
-
-function websiteHref(raw: string): string {
-  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
-}
 
 export function ProfilePage() {
   const { userId = '' } = useParams()
