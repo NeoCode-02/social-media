@@ -17,6 +17,7 @@ from app.modules.chats.router import router as chats_router
 from app.modules.follows.router import router as follows_router
 from app.modules.health.router import router as health_router
 from app.modules.messages.router import router as messages_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.posts.router import router as posts_router
 from app.modules.posts.router import user_router as user_posts_router
 from app.modules.realtime.manager import pubsub_listener
@@ -85,6 +86,7 @@ def create_app() -> FastAPI:
         posts_router,
         user_posts_router,
         follows_router,
+        notifications_router,
     ):
         app.include_router(module_router, prefix=settings.api_prefix)
     # WebSocket lives at /ws (no /api prefix) to match the frontend proxy.

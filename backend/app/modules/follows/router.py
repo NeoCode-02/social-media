@@ -8,6 +8,9 @@ from app.core.db import get_db
 from app.core.deps import get_current_verified_user
 from app.core.rate_limit import rate_limit
 from app.modules.follows import service
+from app.modules.follows.models import ACCEPTED
+from app.modules.notifications import service as notif_service
+from app.modules.notifications.models import FOLLOW, FOLLOW_ACCEPT, FOLLOW_REQUEST
 from app.modules.users.models import User
 from app.modules.users.schemas import UserPublic
 
@@ -39,6 +42,13 @@ async def accept_follow_request(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     await service.accept_request(db, user, follower_id)
+    await notif_service.notify(
+        db,
+        recipient_id=follower_id,
+        actor_id=user.id,
+        type=FOLLOW_ACCEPT,
+        unique=True,
+    )
 
 
 @router.post(
@@ -67,6 +77,13 @@ async def follow_user(
     db: AsyncSession = Depends(get_db),
 ) -> FollowResult:
     result = await service.follow(db, user, user_id)
+    await notif_service.notify(
+        db,
+        recipient_id=user_id,
+        actor_id=user.id,
+        type=FOLLOW if result == ACCEPTED else FOLLOW_REQUEST,
+        unique=True,
+    )
     return FollowResult(status=result)
 
 
