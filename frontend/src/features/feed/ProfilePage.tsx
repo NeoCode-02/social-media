@@ -20,6 +20,7 @@ import type { UserProfile } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
 import { FollowRequests } from '@/features/profile/FollowRequests'
 import { ProfileDialog } from '@/features/profile/ProfileDialog'
+import { UserMenu } from '@/features/profile/UserMenu'
 import { useAuth } from '@/store/auth'
 import { PostFeed } from './PostFeed'
 import { useUserFeed } from './useFeed'
@@ -178,23 +179,28 @@ export function ProfilePage() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={onMessage}
-                      className="flex h-10 w-10 items-center justify-center rounded-full border border-border transition hover:bg-cardhover"
-                      title="Message"
-                    >
-                      <MessageSquare size={17} />
-                    </button>
-                    <button
-                      onClick={toggleFollow}
-                      className={
-                        profile.follow_state !== 'none'
-                          ? 'rounded-full border border-border px-4 py-2 text-sm font-semibold transition hover:border-danger hover:text-danger'
-                          : 'rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accentink transition hover:brightness-105'
-                      }
-                    >
-                      {followLabel}
-                    </button>
+                    <UserMenu profile={profile} />
+                    {!profile.is_blocked && (
+                      <>
+                        <button
+                          onClick={onMessage}
+                          className="flex h-10 w-10 items-center justify-center rounded-full border border-border transition hover:bg-cardhover"
+                          title="Message"
+                        >
+                          <MessageSquare size={17} />
+                        </button>
+                        <button
+                          onClick={toggleFollow}
+                          className={
+                            profile.follow_state !== 'none'
+                              ? 'rounded-full border border-border px-4 py-2 text-sm font-semibold transition hover:border-danger hover:text-danger'
+                              : 'rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accentink transition hover:brightness-105'
+                          }
+                        >
+                          {followLabel}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -259,11 +265,15 @@ export function ProfilePage() {
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card">
                     <Lock size={20} className="text-faint" />
                   </div>
-                  <p className="text-sm font-semibold">This account is private</p>
+                  <p className="text-sm font-semibold">
+                    {profile.is_blocked ? 'You blocked this account' : 'This account is private'}
+                  </p>
                   <p className="max-w-xs text-xs text-faint">
-                    {profile.follow_state === 'pending'
-                      ? 'Your follow request is pending approval. You’ll see their posts once accepted.'
-                      : `Follow @${profile.username} to see their posts.`}
+                    {profile.is_blocked
+                      ? 'Unblock them to see their posts and interact again.'
+                      : profile.follow_state === 'pending'
+                        ? 'Your follow request is pending approval. You’ll see their posts once accepted.'
+                        : `Follow @${profile.username} to see their posts.`}
                   </p>
                 </div>
               )}

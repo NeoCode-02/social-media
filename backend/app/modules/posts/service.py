@@ -11,6 +11,7 @@ from app.modules.messages.models import Attachment
 from app.modules.posts.models import Like, Post, PostHashtag, PostView
 from app.modules.posts.schemas import PostCreate, PostPage, PostRead
 from app.modules.posts.text import extract_hashtags
+from app.modules.relations import service as relations
 from app.modules.users.models import User
 
 MAX_PAGE = 50
@@ -310,6 +311,9 @@ async def home_timeline(
         .order_by(Post.id.desc())
         .limit(limit + 1)
     )
+    excluded = await relations.feed_excluded_ids(db, viewer.id)
+    if excluded:
+        q = q.where(Post.author_id.notin_(excluded))
     if before is not None:
         q = q.where(Post.id < before)
     rows, cursor = _page(list((await db.scalars(q)).all()), limit)
@@ -329,6 +333,9 @@ async def global_timeline(
         .order_by(Post.id.desc())
         .limit(limit + 1)
     )
+    excluded = await relations.feed_excluded_ids(db, viewer.id)
+    if excluded:
+        q = q.where(Post.author_id.notin_(excluded))
     if before is not None:
         q = q.where(Post.id < before)
     rows, cursor = _page(list((await db.scalars(q)).all()), limit)
@@ -353,6 +360,8 @@ async def user_feed(
     author = await db.get(User, author_id)
     if author is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if await relations.blocked_pair(db, viewer.id, author_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
     if not await can_view_posts(db, author, viewer):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is private")
     limit = max(1, min(limit, MAX_PAGE))
@@ -386,6 +395,9 @@ async def list_replies(
         .order_by(Post.id.asc())
         .limit(limit + 1)
     )
+    excluded = await relations.feed_excluded_ids(db, viewer.id)
+    if excluded:
+        q = q.where(Post.author_id.notin_(excluded))
     if after is not None:
         q = q.where(Post.id > after)
     rows, cursor = _page(list((await db.scalars(q)).all()), limit)
@@ -408,6 +420,9 @@ async def search_posts(
         .order_by(Post.id.desc())
         .limit(limit + 1)
     )
+    excluded = await relations.feed_excluded_ids(db, viewer.id)
+    if excluded:
+        query = query.where(Post.author_id.notin_(excluded))
     if before is not None:
         query = query.where(Post.id < before)
     rows, cursor = _page(list((await db.scalars(query)).all()), limit)
@@ -430,6 +445,9 @@ async def hashtag_feed(
         .order_by(Post.id.desc())
         .limit(limit + 1)
     )
+    excluded = await relations.feed_excluded_ids(db, viewer.id)
+    if excluded:
+        query = query.where(Post.author_id.notin_(excluded))
     if before is not None:
         query = query.where(Post.id < before)
     rows, cursor = _page(list((await db.scalars(query)).all()), limit)

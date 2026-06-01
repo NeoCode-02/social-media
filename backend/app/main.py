@@ -22,6 +22,7 @@ from app.modules.posts.router import router as posts_router
 from app.modules.posts.router import user_router as user_posts_router
 from app.modules.realtime.manager import pubsub_listener
 from app.modules.realtime.router import router as realtime_router
+from app.modules.relations.router import router as relations_router
 from app.modules.users.router import router as users_router
 
 
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
         user_posts_router,
         follows_router,
         notifications_router,
+        relations_router,
     ):
         app.include_router(module_router, prefix=settings.api_prefix)
     # WebSocket lives at /ws (no /api prefix) to match the frontend proxy.
