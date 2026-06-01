@@ -37,6 +37,7 @@ class UserProfile(UserPublic):
 class UserMe(UserProfile):
     email: str
     email_verified: bool
+    is_admin: bool = False
     pending_requests: int = 0  # follow requests awaiting my approval
 
 

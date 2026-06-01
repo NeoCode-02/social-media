@@ -404,6 +404,34 @@ async def list_replies(
     return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
 
 
+async def admin_delete_post(db: AsyncSession, post_id: uuid.UUID) -> Post:
+    """Moderator soft-delete of any post (no author check)."""
+    post = await db.get(Post, post_id)
+    if post is None or post.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
+    post.deleted_at = _now()
+    post.text = None
+    await _sync_hashtags(db, post_id, None)
+    await db.commit()
+    loaded = await _get_loaded(db, post_id)
+    assert loaded is not None
+    return loaded
+
+
+async def admin_list_posts(
+    db: AsyncSession, viewer: User, q: str | None, limit: int, before: uuid.UUID | None
+) -> PostPage:
+    """All non-deleted posts (moderation view), newest first; optional text filter."""
+    limit = max(1, min(limit, MAX_PAGE))
+    query = select(Post).where(Post.deleted_at.is_(None)).order_by(Post.id.desc()).limit(limit + 1)
+    if q:
+        query = query.where(Post.text.ilike(f"%{q}%"))
+    if before is not None:
+        query = query.where(Post.id < before)
+    rows, cursor = _page(list((await db.scalars(query)).all()), limit)
+    return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
+
+
 async def search_posts(
     db: AsyncSession, viewer: User, q: str, limit: int, before: uuid.UUID | None
 ) -> PostPage:

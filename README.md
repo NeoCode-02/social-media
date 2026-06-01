@@ -148,6 +148,30 @@ Notifications fire on like, reply, follow, follow-request, follow-accept and @me
 live as `notification.new`. Hashtags (`#tag`) and mentions (`@user`) are parsed from
 post text; mentions notify the mentioned user.
 
+#### Admin / moderation
+
+Set `ADMIN_EMAILS` (comma-separated) — matching accounts are auto-promoted to admin on
+login / email-verify; promote others from the panel. `is_admin`/`is_banned` live on the
+user. Banned accounts are rejected at login and on every authenticated request. All
+`/admin/*` routes require an admin; `/reports` is open to any verified user.
+
+| Method | Path                                  | Purpose                                  |
+| ------ | ------------------------------------- | ---------------------------------------- |
+| POST   | `/api/reports`                        | report a post/user (`target_type`,`target_id`,`reason`) |
+| GET    | `/api/admin/stats`                    | dashboard metrics                        |
+| GET    | `/api/admin/users?q=&offset=`         | search/list users                        |
+| POST   | `/api/admin/users/{id}/ban`·`/unban`  | ban / unban (rejects their tokens)       |
+| POST   | `/api/admin/users/{id}/promote`·`/demote` | grant / revoke admin                 |
+| POST   | `/api/admin/users/{id}/verify`        | force email-verify                       |
+| DELETE | `/api/admin/users/{id}`               | delete an account                        |
+| GET    | `/api/admin/posts?q=`                 | all posts (moderation view)              |
+| DELETE | `/api/admin/posts/{id}`               | delete any post                          |
+| GET    | `/api/admin/reports?status=`          | report queue (open/resolved/dismissed)   |
+| POST   | `/api/admin/reports/{id}/resolve`·`/dismiss` | close a report                    |
+
+The SPA shows an **Admin** rail item (Shield) to admins only, with Dashboard / Users /
+Posts / Reports tabs. Any non-own post or profile carries a **Report** action.
+
 ### 3. Frontend
 
 ```bash

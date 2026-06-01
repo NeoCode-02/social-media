@@ -14,6 +14,7 @@ import { FeedPage } from '@/features/feed/FeedPage'
 import { HashtagPage } from '@/features/feed/HashtagPage'
 import { PostThread } from '@/features/feed/PostThread'
 import { ProfilePage } from '@/features/feed/ProfilePage'
+import { AdminPage } from '@/features/admin/AdminPage'
 import { NotificationsPage } from '@/features/notifications/NotificationsPage'
 import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -42,6 +43,7 @@ function App() {
             <Route path="feed" element={<FeedPage />} />
             <Route path="explore" element={<ExplorePage />} />
             <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="admin" element={<AdminPage />} />
             <Route path="tag/:tag" element={<HashtagPage />} />
             <Route path="post/:postId" element={<PostThread />} />
             <Route path="u/:userId" element={<ProfilePage />} />

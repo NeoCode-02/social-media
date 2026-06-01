@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, Home, LogOut, MessagesSquare, Search } from 'lucide-react'
+import { Bell, Home, LogOut, MessagesSquare, Search, ShieldCheck } from 'lucide-react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
@@ -22,6 +22,7 @@ export function AppShell() {
   const exploreActive = pathname.startsWith('/explore') || pathname.startsWith('/tag')
   const notifActive = pathname.startsWith('/notifications')
   const chatActive = pathname.startsWith('/messages') || pathname.startsWith('/c/')
+  const adminActive = pathname.startsWith('/admin')
   const meActive = pathname === `/u/${me?.id}`
 
   const unread = useQuery({
@@ -67,6 +68,11 @@ export function AppShell() {
         <RailButton label="Messages" active={chatActive} onClick={() => navigate('/messages')}>
           <MessagesSquare size={22} />
         </RailButton>
+        {me?.is_admin && (
+          <RailButton label="Admin" active={adminActive} onClick={() => navigate('/admin')}>
+            <ShieldCheck size={22} />
+          </RailButton>
+        )}
 
         <div className="mt-auto flex flex-col items-center gap-3">
           <button

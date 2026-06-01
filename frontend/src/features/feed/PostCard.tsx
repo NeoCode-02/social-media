@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence } from 'framer-motion'
-import { BarChart3, Heart, MessageCircle, Pencil, Repeat2, Trash2 } from 'lucide-react'
+import { BarChart3, Flag, Heart, MessageCircle, Pencil, Repeat2, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -13,6 +13,7 @@ import {
 } from '@/api/posts'
 import type { Post } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
+import { ReportDialog } from '@/components/ReportDialog'
 import { RichText } from '@/components/RichText'
 import { cn, formatRelative } from '@/lib/utils'
 import { useAuth } from '@/store/auth'
@@ -40,6 +41,7 @@ export function PostCard({ post, emphasis }: Props) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
+  const [reporting, setReporting] = useState(false)
 
   // A bare repost renders as the original with a "reposted" ribbon on top.
   if (isPureRepost(post) && post.repost_of) {
@@ -165,6 +167,18 @@ export function PostCard({ post, emphasis }: Props) {
               </button>
             </div>
           )}
+          {!mine && !deleted && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setReporting(true)
+              }}
+              className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-faint transition hover:bg-cardhover hover:text-danger"
+              title="Report"
+            >
+              <Flag size={13} />
+            </button>
+          )}
         </div>
 
         {post.reply_to && (
@@ -264,6 +278,16 @@ export function PostCard({ post, emphasis }: Props) {
 
       <AnimatePresence>
         {editing && <EditPostDialog post={post} onClose={() => setEditing(false)} />}
+      </AnimatePresence>
+      <AnimatePresence>
+        {reporting && (
+          <ReportDialog
+            targetType="post"
+            targetId={post.id}
+            label="post"
+            onClose={() => setReporting(false)}
+          />
+        )}
       </AnimatePresence>
     </article>
   )

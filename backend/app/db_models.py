@@ -7,6 +7,7 @@ autogenerate. Add new model modules here as milestones land, e.g.::
     from app.modules.chats import models as chat_models   # noqa: F401
 """
 
+from app.modules.admin import models as admin_models  # noqa: F401
 from app.modules.chats import models as chat_models  # noqa: F401
 from app.modules.follows import models as follow_models  # noqa: F401
 from app.modules.messages import models as message_models  # noqa: F401
