@@ -11,9 +11,19 @@ from app.core.storage import presigned_get_url
 from app.modules.messages import service as msg_service
 from app.modules.messages.models import Attachment
 from app.modules.messages.schemas import AttachmentRead
+from app.modules.notifications import service as notif_service
+from app.modules.notifications.models import LIKE, REPLY
 from app.modules.posts import service
-from app.modules.posts.schemas import PostCreate, PostPage, PostRead
+from app.modules.posts.models import Post
+from app.modules.posts.schemas import (
+    PostCreate,
+    PostEdit,
+    PostPage,
+    PostRead,
+    TrendingTag,
+)
 from app.modules.realtime import events
+from app.modules.relations import service as relations
 from app.modules.users.models import User
 
 router = APIRouter(prefix="/posts", tags=["posts"])
@@ -39,6 +49,41 @@ async def global_timeline(
     return await service.global_timeline(db, user, limit, before)
 
 
+@router.get(
+    "/search",
+    response_model=PostPage,
+    dependencies=[rate_limit(40, 60, "post_search")],
+)
+async def search_posts(
+    q: str = Query(min_length=1, max_length=100),
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=50),
+    before: uuid.UUID | None = Query(None),
+) -> PostPage:
+    return await service.search_posts(db, user, q, limit, before)
+
+
+@router.get("/trending/hashtags", response_model=list[TrendingTag])
+async def trending_hashtags(
+    _: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(10, ge=1, le=30),
+) -> list[dict[str, int | str]]:
+    return await service.trending_hashtags(db, limit)
+
+
+@router.get("/hashtag/{tag}", response_model=PostPage)
+async def hashtag_feed(
+    tag: str,
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=50),
+    before: uuid.UUID | None = Query(None),
+) -> PostPage:
+    return await service.hashtag_feed(db, user, tag, limit, before)
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
@@ -50,10 +95,25 @@ async def create_post(
     user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> PostRead:
+    if data.parent_id is not None:
+        parent = await db.get(Post, data.parent_id)
+        if parent is not None and await relations.blocked_pair(db, user.id, parent.author_id):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
     post = await service.create_post(db, user, data)
     payload = (await service.build_posts(db, [post], user))[0]
     if post.parent_id is None:
         await events.publish_post_new(db, payload)
+    else:
+        parent = await db.get(Post, post.parent_id)
+        if parent is not None:
+            await notif_service.notify(
+                db,
+                recipient_id=parent.author_id,
+                actor_id=user.id,
+                type=REPLY,
+                post_id=post.parent_id,
+            )
+    await notif_service.notify_mentions(db, post.text, user, post.id)
     return payload
 
 
@@ -114,6 +174,17 @@ async def get_post(
     return await service.get_post(db, post_id, user)
 
 
+@router.patch("/{post_id}", response_model=PostRead)
+async def edit_post(
+    post_id: uuid.UUID,
+    data: PostEdit,
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+) -> PostRead:
+    post = await service.edit_post(db, post_id, user, data.text)
+    return (await service.build_posts(db, [post], user))[0]
+
+
 @router.delete("/{post_id}", response_model=PostRead)
 async def delete_post(
     post_id: uuid.UUID,
@@ -141,7 +212,19 @@ async def like_post(
     user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    post = await db.get(Post, post_id)
+    if post is not None and await relations.blocked_pair(db, user.id, post.author_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
     await service.like(db, user, post_id)
+    if post is not None:
+        await notif_service.notify(
+            db,
+            recipient_id=post.author_id,
+            actor_id=user.id,
+            type=LIKE,
+            post_id=post_id,
+            unique=True,
+        )
 
 
 @router.delete("/{post_id}/like", status_code=status.HTTP_204_NO_CONTENT)

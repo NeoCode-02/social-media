@@ -47,6 +47,15 @@ class PostRead(BaseModel):
     reply_to: "PostRead | None" = None
 
 
+class PostEdit(BaseModel):
+    text: str | None = Field(default=None, max_length=2000)
+
+
 class PostPage(BaseModel):
     posts: list[PostRead]
     next_cursor: str | None = None
+
+
+class TrendingTag(BaseModel):
+    tag: str
+    count: int

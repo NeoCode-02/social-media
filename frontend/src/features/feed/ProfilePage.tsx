@@ -10,23 +10,21 @@ import {
   MessageSquare,
   UserCheck,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { createDm } from '@/api/chats'
 import { followUser, listFollowRequests, unfollowUser } from '@/api/follows'
-import { getUser } from '@/api/users'
+import { getUser, getUserByUsername } from '@/api/users'
 import type { UserProfile } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
 import { FollowRequests } from '@/features/profile/FollowRequests'
 import { ProfileDialog } from '@/features/profile/ProfileDialog'
+import { UserMenu } from '@/features/profile/UserMenu'
 import { useAuth } from '@/store/auth'
+import { websiteHref } from '@/lib/utils'
 import { PostFeed } from './PostFeed'
 import { useUserFeed } from './useFeed'
-
-function websiteHref(raw: string): string {
-  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
-}
 
 export function ProfilePage() {
   const { userId = '' } = useParams()
@@ -36,12 +34,26 @@ export function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [showRequests, setShowRequests] = useState(false)
 
+  // A `@handle` URL is resolved to the user's id, then redirected to /u/{id}.
+  const byUsername = userId.startsWith('@')
+  const lookup = useQuery({
+    queryKey: ['userByUsername', userId],
+    queryFn: () => getUserByUsername(userId.slice(1)).then((r) => r.data),
+    enabled: byUsername,
+  })
+  useEffect(() => {
+    if (byUsername && lookup.data) {
+      qc.setQueryData(['user', lookup.data.id], lookup.data)
+      navigate(`/u/${lookup.data.id}`, { replace: true })
+    }
+  }, [byUsername, lookup.data, navigate, qc])
+
   const { data: profile, isLoading } = useQuery({
     queryKey: ['user', userId],
     queryFn: async () => (await getUser(userId)).data,
-    enabled: Boolean(userId),
+    enabled: Boolean(userId) && !byUsername,
   })
-  const isMe = me?.id === userId
+  const isMe = Boolean(profile && me?.id === profile.id)
   const canViewPosts = Boolean(profile?.can_view_posts)
   const feed = useUserFeed(userId)
   const posts = (feed.data?.pages ?? []).flatMap((p) => p.posts)
@@ -164,23 +176,28 @@ export function ProfilePage() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={onMessage}
-                      className="flex h-10 w-10 items-center justify-center rounded-full border border-border transition hover:bg-cardhover"
-                      title="Message"
-                    >
-                      <MessageSquare size={17} />
-                    </button>
-                    <button
-                      onClick={toggleFollow}
-                      className={
-                        profile.follow_state !== 'none'
-                          ? 'rounded-full border border-border px-4 py-2 text-sm font-semibold transition hover:border-danger hover:text-danger'
-                          : 'rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accentink transition hover:brightness-105'
-                      }
-                    >
-                      {followLabel}
-                    </button>
+                    <UserMenu profile={profile} />
+                    {!profile.is_blocked && (
+                      <>
+                        <button
+                          onClick={onMessage}
+                          className="flex h-10 w-10 items-center justify-center rounded-full border border-border transition hover:bg-cardhover"
+                          title="Message"
+                        >
+                          <MessageSquare size={17} />
+                        </button>
+                        <button
+                          onClick={toggleFollow}
+                          className={
+                            profile.follow_state !== 'none'
+                              ? 'rounded-full border border-border px-4 py-2 text-sm font-semibold transition hover:border-danger hover:text-danger'
+                              : 'rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accentink transition hover:brightness-105'
+                          }
+                        >
+                          {followLabel}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -245,11 +262,15 @@ export function ProfilePage() {
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card">
                     <Lock size={20} className="text-faint" />
                   </div>
-                  <p className="text-sm font-semibold">This account is private</p>
+                  <p className="text-sm font-semibold">
+                    {profile.is_blocked ? 'You blocked this account' : 'This account is private'}
+                  </p>
                   <p className="max-w-xs text-xs text-faint">
-                    {profile.follow_state === 'pending'
-                      ? 'Your follow request is pending approval. You’ll see their posts once accepted.'
-                      : `Follow @${profile.username} to see their posts.`}
+                    {profile.is_blocked
+                      ? 'Unblock them to see their posts and interact again.'
+                      : profile.follow_state === 'pending'
+                        ? 'Your follow request is pending approval. You’ll see their posts once accepted.'
+                        : `Follow @${profile.username} to see their posts.`}
                   </p>
                 </div>
               )}

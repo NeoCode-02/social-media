@@ -44,6 +44,9 @@ export function useRealtime(): void {
         case 'post.new':
           prependToTimeline(qc, ev.post)
           break
+        case 'notification.new':
+          qc.invalidateQueries({ queryKey: ['notifications'] })
+          break
         case 'typing': {
           setTyping(ev.chat_id, ev.user_id, ev.is_typing)
           const key = `${ev.chat_id}:${ev.user_id}`

@@ -7,15 +7,12 @@ import { createDm } from '@/api/chats'
 import { getUser } from '@/api/users'
 import { Avatar } from '@/components/Avatar'
 import { Button } from '@/components/Button'
+import { websiteHref } from '@/lib/utils'
 import { useAuth } from '@/store/auth'
 
 interface Props {
   userId: string
   onClose: () => void
-}
-
-function websiteHref(raw: string): string {
-  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
 }
 
 export function ProfileView({ userId, onClose }: Props) {
