@@ -12,6 +12,9 @@ export interface PostCreate {
 export const listTimeline = (before?: string) =>
   api.get<PostPage>('/posts', { params: { before, limit: 20 } })
 
+export const globalFeed = (before?: string) =>
+  api.get<PostPage>('/posts/global', { params: { before, limit: 20 } })
+
 export const getPost = (id: string) => api.get<Post>(`/posts/${id}`)
 
 export const createPost = (body: PostCreate) => api.post<Post>('/posts', body)

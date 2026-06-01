@@ -29,6 +29,16 @@ async def home_timeline(
     return await service.home_timeline(db, user, limit, before)
 
 
+@router.get("/global", response_model=PostPage)
+async def global_timeline(
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=50),
+    before: uuid.UUID | None = Query(None),
+) -> PostPage:
+    return await service.global_timeline(db, user, limit, before)
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,

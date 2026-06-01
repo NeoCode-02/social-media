@@ -40,13 +40,3 @@ class UserUpdate(BaseModel):
     bio: str | None = Field(default=None, max_length=280)
     location: str | None = Field(default=None, max_length=64)
     website: str | None = Field(default=None, max_length=255)
-
-
-class AvatarUploadRequest(BaseModel):
-    content_type: str = Field(pattern=r"^image/(png|jpeg|jpg|webp|gif)$")
-
-
-class AvatarUploadResponse(BaseModel):
-    upload_url: str
-    public_url: str
-    key: str

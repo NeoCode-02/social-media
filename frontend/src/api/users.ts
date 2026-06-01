@@ -1,5 +1,7 @@
 import { api } from './client'
-import type { UserMe, UserProfile } from './types'
+import type { UserMe, UserProfile, UserPublic } from './types'
+
+export const searchUsers = (q: string) => api.get<UserPublic[]>('/users/search', { params: { q } })
 
 export interface ProfileUpdate {
   display_name?: string

@@ -24,3 +24,21 @@ def make_thumbnail(data: bytes) -> bytes | None:
             return out.getvalue()
     except Exception:
         return None
+
+MAX_IMAGE_DIMENSIONS = (1920, 1080)
+
+def compress_image(data: bytes, original_mime: str) -> tuple[bytes, str]:
+    """Compress image, resize if too large, and convert to WEBP for storage savings."""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            if im.format == "GIF":
+                # Do not compress animated gifs
+                return data, original_mime
+            
+            rgb = im.convert("RGB")
+            rgb.thumbnail(MAX_IMAGE_DIMENSIONS)
+            out = io.BytesIO()
+            rgb.save(out, format="WEBP", quality=85)
+            return out.getvalue(), "image/webp"
+    except Exception:
+        return data, original_mime

@@ -2,6 +2,7 @@ import json
 import secrets
 
 import jwt
+import sqlalchemy as sa
 from fastapi import HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +24,7 @@ CODE_KEY = "emailcode:{email}"
 RESEND_KEY = "emailcode_sent:{email}"
 REFRESH_KEY = "refresh:{jti}"
 USER_SESSIONS_KEY = "user_sessions:{user_id}"
+WS_TICKET_KEY = "wsticket:{ticket}"
 
 
 def _generate_code() -> str:
@@ -53,7 +55,14 @@ async def register_user(db: AsyncSession, data: RegisterRequest) -> User:
         password_hash=await hash_password(data.password),
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except sa.exc.IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email or username already in use",
+        ) from exc
     await db.refresh(user)
     await _store_and_send_code(data.email)
     return user
@@ -185,6 +194,23 @@ async def _revoke_all_for_user(user_id: str) -> None:
     for jti in jtis:
         await redis.delete(REFRESH_KEY.format(jti=jti))
     await redis.delete(sessions_key)
+
+
+async def issue_ws_ticket(user: User) -> str:
+    redis = get_redis()
+    ticket = secrets.token_urlsafe(32)
+    await redis.set(WS_TICKET_KEY.format(ticket=ticket), str(user.id), ex=10)
+    return ticket
+
+
+async def verify_ws_ticket(ticket: str) -> str | None:
+    redis = get_redis()
+    key = WS_TICKET_KEY.format(ticket=ticket)
+    user_id = await redis.get(key)
+    if user_id:
+        await redis.delete(key)
+        return user_id
+    return None
 
 
 def create_token_family_member(subject: str, parent_jti: str) -> tuple[str, str]:

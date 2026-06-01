@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.images import image_dimensions, make_thumbnail
+from app.core.images import compress_image, image_dimensions, make_thumbnail
 from app.core.storage import put_object
 from app.modules.messages.models import (
     MSG_AUDIO,
@@ -40,6 +40,7 @@ def process_blob(
     width = height = None
     thumb_key = None
     if mime.startswith("image/") and not as_file:
+        data, mime = compress_image(data, mime)
         dims = image_dimensions(data)
         if dims:
             width, height = dims

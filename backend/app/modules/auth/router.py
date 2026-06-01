@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.db import get_db
+from app.core.deps import get_current_user
 from app.core.rate_limit import rate_limit
 from app.modules.auth import service
 from app.modules.auth.oauth import oauth
@@ -12,9 +13,11 @@ from app.modules.auth.schemas import (
     MessageResponse,
     RegisterRequest,
     ResendCodeRequest,
+    TicketResponse,
     TokenResponse,
     VerifyEmailRequest,
 )
+from app.modules.users.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -106,6 +109,12 @@ async def logout(request: Request, response: Response) -> MessageResponse:
         await service.revoke_refresh(token)
     _clear_refresh_cookie(response)
     return MessageResponse(detail="Logged out")
+
+
+@router.get("/ws-ticket", response_model=TicketResponse)
+async def get_ws_ticket(user: User = Depends(get_current_user)) -> TicketResponse:
+    ticket = await service.issue_ws_ticket(user)
+    return TicketResponse(ticket=ticket)
 
 
 # --- Google OAuth ---------------------------------------------------------
