@@ -11,6 +11,7 @@ import { Conversation } from '@/features/chat/Conversation'
 import { EmptyConversation } from '@/features/chat/EmptyConversation'
 import { ExplorePage } from '@/features/explore/ExplorePage'
 import { FeedPage } from '@/features/feed/FeedPage'
+import { HashtagPage } from '@/features/feed/HashtagPage'
 import { PostThread } from '@/features/feed/PostThread'
 import { ProfilePage } from '@/features/feed/ProfilePage'
 import { AuthCallbackPage } from '@/pages/AuthCallbackPage'
@@ -39,6 +40,7 @@ function App() {
             <Route index element={<Navigate to="/feed" replace />} />
             <Route path="feed" element={<FeedPage />} />
             <Route path="explore" element={<ExplorePage />} />
+            <Route path="tag/:tag" element={<HashtagPage />} />
             <Route path="post/:postId" element={<PostThread />} />
             <Route path="u/:userId" element={<ProfilePage />} />
             <Route element={<ChatLayout />}>

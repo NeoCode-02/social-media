@@ -69,3 +69,14 @@ class PostView(Timestamped, Base):
     viewer_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
+
+
+class PostHashtag(Timestamped, Base):
+    """A #tag occurrence on a post. created_at powers trending windows."""
+
+    __tablename__ = "post_hashtags"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag: Mapped[str] = mapped_column(sa.String(50), primary_key=True, index=True)
