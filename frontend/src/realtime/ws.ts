@@ -1,26 +1,32 @@
 import type { RealtimeEvent } from '@/api/types'
 
 type Handler = (event: RealtimeEvent) => void
+type GetTicketFn = () => Promise<string | null>
 
-/** Singleton WebSocket client with token auth + exponential-backoff reconnect. */
+/** Singleton WebSocket client with ticket auth + exponential-backoff reconnect. */
 class WSClient {
   private ws: WebSocket | null = null
   private handlers = new Set<Handler>()
-  private token: string | null = null
+  private getTicket: GetTicketFn | null = null
   private retry = 0
   private closedByUser = false
+  private connecting = false
 
-  connect(token: string): void {
-    this.token = token
+  connect(getTicket: GetTicketFn): void {
+    this.getTicket = getTicket
     this.closedByUser = false
     if (this.ws && this.ws.readyState <= WebSocket.OPEN) return
-    this.open()
+    void this.open()
   }
 
-  private open(): void {
-    if (!this.token || this.closedByUser) return
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    this.ws = new WebSocket(`${proto}://${location.host}/ws?token=${this.token}`)
+  private async open(): Promise<void> {
+    if (!this.getTicket || this.closedByUser || this.connecting) return
+    this.connecting = true
+    try {
+      const ticket = await this.getTicket()
+      if (!ticket || this.closedByUser) return
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+      this.ws = new WebSocket(`${proto}://${location.host}/ws?ticket=${ticket}`)
 
     this.ws.onopen = () => {
       this.retry = 0
@@ -39,7 +45,10 @@ class WSClient {
       this.retry += 1
       setTimeout(() => this.open(), delay)
     }
-    this.ws.onerror = () => this.ws?.close()
+      this.ws.onerror = () => this.ws?.close()
+    } finally {
+      this.connecting = false
+    }
   }
 
   send(payload: Record<string, unknown>): void {

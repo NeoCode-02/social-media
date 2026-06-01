@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 
-import { listReplies, listTimeline, userFeed } from '@/api/posts'
+import { globalFeed, listReplies, listTimeline, userFeed } from '@/api/posts'
 import type { PostPage } from '@/api/types'
 
 const nextCursor = (last: PostPage) => last.next_cursor ?? undefined
@@ -9,6 +9,15 @@ export function useTimeline() {
   return useInfiniteQuery({
     queryKey: ['timeline'],
     queryFn: ({ pageParam }) => listTimeline(pageParam).then((r) => r.data),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: nextCursor,
+  })
+}
+
+export function useGlobalFeed() {
+  return useInfiniteQuery({
+    queryKey: ['globalFeed'],
+    queryFn: ({ pageParam }) => globalFeed(pageParam).then((r) => r.data),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: nextCursor,
   })

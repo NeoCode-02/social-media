@@ -22,6 +22,7 @@
     "react-dom": "^19.2.6",
     "react-easy-crop": "^5.5.7",
     "react-router-dom": "^7.16.0",
+    "react-textarea-autosize": "^8.5.9",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

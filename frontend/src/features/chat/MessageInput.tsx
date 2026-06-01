@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FileText, ImageIcon, Mic, Paperclip, Reply, SendHorizontal, X } from 'lucide-react'
 import { useRef, useState } from 'react'
+import TextareaAutosize from 'react-textarea-autosize'
 
 import { sendMessage, uploadAttachment, type UploadOpts } from '@/api/chats'
 import type { Attachment, Message } from '@/api/types'
@@ -91,8 +92,7 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
     }
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function doSubmit() {
     const content = text.trim()
     if ((!content && !pending) || sending) return
     setSending(true)
@@ -111,6 +111,11 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
     } finally {
       setSending(false)
     }
+  }
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    void doSubmit()
   }
 
   return (
@@ -180,7 +185,7 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
       {recording ? (
         <VoiceRecorder onSend={onVoiceSend} onCancel={() => setRecording(false)} />
       ) : (
-        <form onSubmit={onSubmit} className="flex items-center gap-2">
+        <form onSubmit={onSubmit} className="flex items-end gap-2">
           <div className="relative shrink-0">
             <button
               type="button"
@@ -229,17 +234,25 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
             </AnimatePresence>
           </div>
 
-          <input
+          <TextareaAutosize
             value={text}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape' && replyTo) {
                 onCancelReply?.()
+                return
+              }
+              // Enter sends; Shift/Ctrl+Enter inserts a newline.
+              if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                void doSubmit()
               }
             }}
             placeholder="Write a message…"
             aria-label="Message"
-            className="min-w-0 flex-1 rounded-full border border-border bg-card px-4 py-3 text-sm outline-none placeholder:text-faint focus:border-violet/50"
+            minRows={1}
+            maxRows={6}
+            className="min-w-0 flex-1 resize-none rounded-2xl border border-border bg-card px-4 py-2.5 text-sm outline-none placeholder:text-faint focus:border-violet/50"
           />
 
           {text.trim() || pending ? (
