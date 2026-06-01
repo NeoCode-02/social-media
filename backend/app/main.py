@@ -12,6 +12,8 @@ from app.core.logging import configure_logging, request_id_var
 from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.core.queue import close_arq_pool
 from app.core.redis import close_redis
+from app.modules.admin.router import reports_router
+from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
 from app.modules.chats.router import router as chats_router
 from app.modules.follows.router import router as follows_router
@@ -89,6 +91,8 @@ def create_app() -> FastAPI:
         follows_router,
         notifications_router,
         relations_router,
+        admin_router,
+        reports_router,
     ):
         app.include_router(module_router, prefix=settings.api_prefix)
     # WebSocket lives at /ws (no /api prefix) to match the frontend proxy.

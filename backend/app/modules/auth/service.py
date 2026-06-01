@@ -81,6 +81,10 @@ async def request_email_code(db: AsyncSession, email: str) -> None:
     await _store_and_send_code(email)
 
 
+def _is_admin_email(email: str) -> bool:
+    return email.lower() in settings.admin_email_set
+
+
 async def verify_email(db: AsyncSession, email: str, code: str) -> User:
     redis = get_redis()
     stored = await redis.get(CODE_KEY.format(email=email))
@@ -93,6 +97,8 @@ async def verify_email(db: AsyncSession, email: str, code: str) -> User:
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.email_verified = True
+    if _is_admin_email(user.email):
+        user.is_admin = True
     await db.commit()
     await redis.delete(CODE_KEY.format(email=email))
     return user
@@ -109,6 +115,11 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
         raise _invalid_credentials
     if not await verify_password(user.password_hash, password):
         raise _invalid_credentials
+    if user.is_banned:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned")
+    if _is_admin_email(user.email) and not user.is_admin:
+        user.is_admin = True
+        await db.commit()
     return user
 
 
@@ -249,10 +260,17 @@ async def get_or_create_oauth_user(
     if account is not None:
         user = await db.get(User, account.user_id)
         assert user is not None
+        if user.is_banned:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned")
+        if _is_admin_email(user.email) and not user.is_admin:
+            user.is_admin = True
+            await db.commit()
         return user
 
     # Link to an existing email account, or create a new verified user.
     user = await db.scalar(select(User).where(User.email == email))
+    if user is not None and user.is_banned:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned")
     if user is None:
         user = User(
             email=email,
@@ -262,6 +280,8 @@ async def get_or_create_oauth_user(
         )
         db.add(user)
         await db.flush()
+    if _is_admin_email(email):
+        user.is_admin = True
     user.oauth_accounts.append(OAuthAccount(provider=provider, provider_user_id=provider_user_id))
     await db.commit()
     await db.refresh(user)
