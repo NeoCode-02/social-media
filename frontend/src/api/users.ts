@@ -8,6 +8,7 @@ export interface ProfileUpdate {
   bio?: string | null
   location?: string | null
   website?: string | null
+  is_private?: boolean
 }
 
 export const updateMe = (body: ProfileUpdate) => api.patch<UserMe>('/users/me', body)

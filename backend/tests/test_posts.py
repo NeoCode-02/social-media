@@ -60,8 +60,9 @@ async def test_timeline_follow_gating(client: AsyncClient, fake_redis):
     await client.post("/api/posts", json={"text": "from C"}, headers=c_h)
     await client.post("/api/posts", json={"text": "from A"}, headers=a_h)
 
-    # A follows only B → sees B + own A, not C
-    assert (await client.post(f"/api/users/{b_id}/follow", headers=a_h)).status_code == 204
+    # A follows only B → sees B + own A, not C (public account → accepted)
+    follow_res = await client.post(f"/api/users/{b_id}/follow", headers=a_h)
+    assert follow_res.status_code == 200 and follow_res.json()["status"] == "accepted"
     feed = (await client.get("/api/posts", headers=a_h)).json()["posts"]
     texts = [p["text"] for p in feed]
     assert "from B" in texts and "from A" in texts and "from C" not in texts
