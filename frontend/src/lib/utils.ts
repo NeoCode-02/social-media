@@ -98,3 +98,12 @@ export function chatFace(chat: Chat, meId: string | undefined): ChatFace {
   const other = chat.members.find((m) => m.user.id !== meId)?.user
   return { name: other?.display_name ?? 'Direct message', url: other?.avatar_url ?? null, userId: other?.id }
 }
+
+/**
+ * Normalize a user-supplied website into a safe, clickable href.
+ * Forces an http(s) scheme so values like `javascript:…` can never become a
+ * dangerous href (they get prefixed into a harmless https URL).
+ */
+export function websiteHref(raw: string): string {
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+}

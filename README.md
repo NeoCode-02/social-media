@@ -57,8 +57,10 @@ cd backend && uv run arq app.worker.WorkerSettings
 | POST   | `/api/auth/logout`         | revoke refresh token                     |
 | GET    | `/api/auth/google/login`   | Google OAuth (needs client id/secret)    |
 | GET    | `/api/users/me`            | current profile (Bearer access token)    |
-| PATCH  | `/api/users/me`            | update display name / avatar             |
-| POST   | `/api/users/me/avatar-url` | presigned MinIO URL for direct upload    |
+| PATCH  | `/api/users/me`            | update profile (bio/location/website/`is_private`) |
+| POST   | `/api/users/me/avatar`     | multipart avatar upload → MinIO (≤25 MB) |
+| GET    | `/api/users/{id}`          | a user's public profile (counts, follow/block state) |
+| GET    | `/api/users/by-username/{username}` | resolve a `@handle` to a profile |
 
 Access token (15 min) goes in the `Authorization: Bearer` header; the refresh token
 (30 days, rotating) lives in an httpOnly cookie scoped to `/api/auth`. Verification
@@ -92,20 +94,59 @@ ids directly. All chat endpoints require a verified email.
 
 #### Realtime (M3)
 
-Connect a WebSocket to `ws://localhost:8000/ws?token=<access_token>` (the vite dev
+Fetch a short-lived **ticket** from `GET /api/auth/ws-ticket` (Bearer access token),
+then connect a WebSocket to `ws://localhost:8000/ws?ticket=<ticket>` (the vite dev
 server proxies `/ws`). Messages are **sent over REST** and **received over the socket**;
-typing and read receipts flow over the socket. Fan-out across API instances uses Redis
-pub/sub — the publisher computes recipients, every process delivers to its locally
-connected sockets.
+typing and read receipts flow over the socket. Fan-out across API instances uses a single
+Redis `psubscribe("user:*")` pattern listener — the publisher computes recipients and
+publishes per-user, every process delivers to its locally connected sockets.
 
 | Direction        | Event                                                   |
 | ---------------- | ------------------------------------------------------- |
 | server → client  | `message.new`, `message.edited`, `message.deleted`      |
 | server → client  | `typing`, `message.read`, `presence` (online/offline)   |
+| server → client  | `post.new` (a followee posted), `notification.new`      |
 | client → server  | `typing.start` / `typing.stop` `{chat_id}`              |
 | client → server  | `message.read` `{chat_id, last_read_message_id}`        |
 
 Presence is tracked per process; `last_seen` is persisted on disconnect.
+
+#### Social / feed API (Twitter half)
+
+All require a verified email. Counts (like/reply/repost/view) are computed on read;
+post ids are time-ordered **UUIDv7** cursors.
+
+| Method | Path                                   | Purpose                                       |
+| ------ | -------------------------------------- | --------------------------------------------- |
+| GET    | `/api/posts`                           | home timeline (your + accepted-followees)     |
+| GET    | `/api/posts/global`                    | global feed (everyone, block/mute filtered)   |
+| POST   | `/api/posts`                           | create post / reply (`parent_id`) / quote     |
+| GET    | `/api/posts/{id}`                      | one post (records a unique view)              |
+| PATCH  | `/api/posts/{id}`                      | edit own post (stamps `edited_at`)            |
+| DELETE | `/api/posts/{id}`                      | soft-delete own post                          |
+| GET    | `/api/posts/{id}/replies`              | replies (cursor)                              |
+| POST/DELETE | `/api/posts/{id}/like`            | like / unlike                                 |
+| POST/DELETE | `/api/posts/{id}/repost`          | repost / undo                                 |
+| GET    | `/api/posts/search?q=`                 | full-text post search (trigram-indexed)       |
+| GET    | `/api/posts/hashtag/{tag}`             | posts for a hashtag                           |
+| GET    | `/api/posts/trending/hashtags`         | trending tags (7-day window)                  |
+| GET    | `/api/users/{id}/posts`                | a user's posts (private → 403 unless follower)|
+| GET    | `/api/users/search?q=`                 | people search (block-filtered)                |
+| POST/DELETE | `/api/users/{id}/follow`          | follow/request (private) / unfollow           |
+| GET    | `/api/users/{id}/followers`·`/following` | accepted follower / following lists         |
+| GET    | `/api/users/me/follow-requests`        | pending requests (private accounts)           |
+| POST   | `/api/users/me/follow-requests/{id}/accept`·`/reject` | approve / decline a request    |
+| POST/DELETE | `/api/users/{id}/block`           | block / unblock (mutual, severs follows)      |
+| POST/DELETE | `/api/users/{id}/mute`            | mute / unmute (one-way feed hide)             |
+| GET    | `/api/users/me/blocks`·`/mutes`        | manage blocked / muted accounts               |
+| GET    | `/api/notifications`                   | notifications + `unread_count` (cursor)       |
+| GET    | `/api/notifications/unread-count`      | unread badge count                            |
+| POST   | `/api/notifications/read`              | mark read (all, or `{ids:[…]}`)               |
+
+Notifications fire on like, reply, follow, follow-request, follow-accept and @mention
+(self-actions skipped, like/follow deduped, suppressed across a block) and are pushed
+live as `notification.new`. Hashtags (`#tag`) and mentions (`@user`) are parsed from
+post text; mentions notify the mentioned user.
 
 ### 3. Frontend
 
