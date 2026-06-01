@@ -1,8 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { Home, LogOut, MessagesSquare, Search } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Bell, Home, LogOut, MessagesSquare, Search } from 'lucide-react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
+import { unreadCount } from '@/api/notifications'
 import { Avatar } from '@/components/Avatar'
 import { useRealtime } from '@/realtime/useRealtime'
 import { wsClient } from '@/realtime/ws'
@@ -18,9 +19,17 @@ export function AppShell() {
   const { pathname } = useLocation()
 
   const feedActive = pathname.startsWith('/feed') || pathname.startsWith('/post')
-  const exploreActive = pathname.startsWith('/explore')
+  const exploreActive = pathname.startsWith('/explore') || pathname.startsWith('/tag')
+  const notifActive = pathname.startsWith('/notifications')
   const chatActive = pathname.startsWith('/messages') || pathname.startsWith('/c/')
   const meActive = pathname === `/u/${me?.id}`
+
+  const unread = useQuery({
+    queryKey: ['notifications', 'unread'],
+    queryFn: () => unreadCount().then((r) => r.data.count),
+    refetchInterval: 60_000,
+  })
+  const unreadN = unread.data ?? 0
 
   async function onLogout() {
     try {
@@ -46,6 +55,14 @@ export function AppShell() {
         </RailButton>
         <RailButton label="Explore" active={exploreActive} onClick={() => navigate('/explore')}>
           <Search size={22} />
+        </RailButton>
+        <RailButton
+          label="Notifications"
+          active={notifActive}
+          onClick={() => navigate('/notifications')}
+          badge={unreadN}
+        >
+          <Bell size={22} />
         </RailButton>
         <RailButton label="Messages" active={chatActive} onClick={() => navigate('/messages')}>
           <MessagesSquare size={22} />
@@ -81,22 +98,29 @@ function RailButton({
   active,
   onClick,
   children,
+  badge = 0,
 }: {
   label: string
   active: boolean
   onClick: () => void
   children: React.ReactNode
+  badge?: number
 }) {
   return (
     <button
       onClick={onClick}
       title={label}
       className={cn(
-        'flex h-12 w-12 items-center justify-center rounded-2xl transition',
+        'relative flex h-12 w-12 items-center justify-center rounded-2xl transition',
         active ? 'bg-accent/15 text-accent' : 'text-muted hover:bg-cardhover hover:text-text',
       )}
     >
       {children}
+      {badge > 0 && (
+        <span className="absolute right-1.5 top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold text-accentink">
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
     </button>
   )
 }

@@ -104,6 +104,30 @@ export interface PostPage {
   next_cursor: string | null
 }
 
+export type NotificationType =
+  | 'like'
+  | 'reply'
+  | 'follow'
+  | 'follow_request'
+  | 'follow_accept'
+  | 'mention'
+
+export interface Notification {
+  id: string
+  type: NotificationType
+  actor: UserPublic
+  post_id: string | null
+  post_preview: string | null
+  read: boolean
+  created_at: string
+}
+
+export interface NotificationPage {
+  notifications: Notification[]
+  next_cursor: string | null
+  unread_count: number
+}
+
 export interface TokenResponse {
   access_token: string
   token_type: string
@@ -116,3 +140,4 @@ export type RealtimeEvent =
   | { type: 'message.read'; chat_id: string; user_id: string; last_read_message_id: string }
   | { type: 'presence'; user_id: string; status: 'online' | 'offline' }
   | { type: 'post.new'; post: Post }
+  | { type: 'notification.new'; notification: Notification }

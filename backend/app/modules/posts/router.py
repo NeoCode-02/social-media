@@ -11,7 +11,10 @@ from app.core.storage import presigned_get_url
 from app.modules.messages import service as msg_service
 from app.modules.messages.models import Attachment
 from app.modules.messages.schemas import AttachmentRead
+from app.modules.notifications import service as notif_service
+from app.modules.notifications.models import LIKE, REPLY
 from app.modules.posts import service
+from app.modules.posts.models import Post
 from app.modules.posts.schemas import (
     PostCreate,
     PostEdit,
@@ -95,6 +98,17 @@ async def create_post(
     payload = (await service.build_posts(db, [post], user))[0]
     if post.parent_id is None:
         await events.publish_post_new(db, payload)
+    else:
+        parent = await db.get(Post, post.parent_id)
+        if parent is not None:
+            await notif_service.notify(
+                db,
+                recipient_id=parent.author_id,
+                actor_id=user.id,
+                type=REPLY,
+                post_id=post.parent_id,
+            )
+    await notif_service.notify_mentions(db, post.text, user, post.id)
     return payload
 
 
@@ -194,6 +208,16 @@ async def like_post(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     await service.like(db, user, post_id)
+    post = await db.get(Post, post_id)
+    if post is not None:
+        await notif_service.notify(
+            db,
+            recipient_id=post.author_id,
+            actor_id=user.id,
+            type=LIKE,
+            post_id=post_id,
+            unique=True,
+        )
 
 
 @router.delete("/{post_id}/like", status_code=status.HTTP_204_NO_CONTENT)
