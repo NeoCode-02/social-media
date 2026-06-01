@@ -12,7 +12,13 @@ from app.modules.messages import service as msg_service
 from app.modules.messages.models import Attachment
 from app.modules.messages.schemas import AttachmentRead
 from app.modules.posts import service
-from app.modules.posts.schemas import PostCreate, PostPage, PostRead
+from app.modules.posts.schemas import (
+    PostCreate,
+    PostEdit,
+    PostPage,
+    PostRead,
+    TrendingTag,
+)
 from app.modules.realtime import events
 from app.modules.users.models import User
 
@@ -37,6 +43,41 @@ async def global_timeline(
     before: uuid.UUID | None = Query(None),
 ) -> PostPage:
     return await service.global_timeline(db, user, limit, before)
+
+
+@router.get(
+    "/search",
+    response_model=PostPage,
+    dependencies=[rate_limit(40, 60, "post_search")],
+)
+async def search_posts(
+    q: str = Query(min_length=1, max_length=100),
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=50),
+    before: uuid.UUID | None = Query(None),
+) -> PostPage:
+    return await service.search_posts(db, user, q, limit, before)
+
+
+@router.get("/trending/hashtags", response_model=list[TrendingTag])
+async def trending_hashtags(
+    _: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(10, ge=1, le=30),
+) -> list[dict[str, int | str]]:
+    return await service.trending_hashtags(db, limit)
+
+
+@router.get("/hashtag/{tag}", response_model=PostPage)
+async def hashtag_feed(
+    tag: str,
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(20, ge=1, le=50),
+    before: uuid.UUID | None = Query(None),
+) -> PostPage:
+    return await service.hashtag_feed(db, user, tag, limit, before)
 
 
 @router.post(
@@ -112,6 +153,17 @@ async def get_post(
     db: AsyncSession = Depends(get_db),
 ) -> PostRead:
     return await service.get_post(db, post_id, user)
+
+
+@router.patch("/{post_id}", response_model=PostRead)
+async def edit_post(
+    post_id: uuid.UUID,
+    data: PostEdit,
+    user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+) -> PostRead:
+    post = await service.edit_post(db, post_id, user, data.text)
+    return (await service.build_posts(db, [post], user))[0]
 
 
 @router.delete("/{post_id}", response_model=PostRead)

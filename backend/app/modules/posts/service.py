@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import sqlalchemy as sa
 from fastapi import HTTPException, status
@@ -8,11 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.follows.models import ACCEPTED, Follow
 from app.modules.messages.models import Attachment
-from app.modules.posts.models import Like, Post, PostView
+from app.modules.posts.models import Like, Post, PostHashtag, PostView
 from app.modules.posts.schemas import PostCreate, PostPage, PostRead
+from app.modules.posts.text import extract_hashtags
 from app.modules.users.models import User
 
 MAX_PAGE = 50
+
+
+async def _sync_hashtags(db: AsyncSession, post_id: uuid.UUID, text: str | None) -> None:
+    """Replace a post's hashtag rows with the tags currently in its text."""
+    await db.execute(sa.delete(PostHashtag).where(PostHashtag.post_id == post_id))
+    for tag in extract_hashtags(text):
+        db.add(PostHashtag(post_id=post_id, tag=tag))
 
 
 def _now() -> datetime:
@@ -61,8 +69,29 @@ async def create_post(db: AsyncSession, author: User, data: PostCreate) -> Post:
     await db.flush()
     for att in attachments:
         att.post_id = post.id
+    await _sync_hashtags(db, post.id, post.text)
     await db.commit()
     loaded = await _get_loaded(db, post.id)
+    assert loaded is not None
+    return loaded
+
+
+async def edit_post(
+    db: AsyncSession, post_id: uuid.UUID, user: User, text: str | None
+) -> Post:
+    post = await _get_loaded(db, post_id)
+    if post is None or post.deleted_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Post not found")
+    if post.author_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your post")
+    clean = (text or "").strip() or None
+    if clean is None and not post.attachments:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A post needs text or an attachment")
+    post.text = clean
+    post.edited_at = _now()
+    await _sync_hashtags(db, post_id, clean)
+    await db.commit()
+    loaded = await _get_loaded(db, post_id)
     assert loaded is not None
     return loaded
 
@@ -75,6 +104,7 @@ async def delete_post(db: AsyncSession, post_id: uuid.UUID, user: User) -> Post:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your post")
     post.deleted_at = _now()
     post.text = None
+    await _sync_hashtags(db, post.id, None)  # drop its tags from trending/search
     await db.commit()
     loaded = await _get_loaded(db, post.id)
     assert loaded is not None
@@ -360,6 +390,67 @@ async def list_replies(
         q = q.where(Post.id > after)
     rows, cursor = _page(list((await db.scalars(q)).all()), limit)
     return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
+
+
+async def search_posts(
+    db: AsyncSession, viewer: User, q: str, limit: int, before: uuid.UUID | None
+) -> PostPage:
+    """Substring search over top-level, non-deleted post text."""
+    limit = max(1, min(limit, MAX_PAGE))
+    pattern = f"%{q}%"
+    query = (
+        select(Post)
+        .where(
+            Post.deleted_at.is_(None),
+            Post.parent_id.is_(None),
+            Post.text.ilike(pattern),
+        )
+        .order_by(Post.id.desc())
+        .limit(limit + 1)
+    )
+    if before is not None:
+        query = query.where(Post.id < before)
+    rows, cursor = _page(list((await db.scalars(query)).all()), limit)
+    return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
+
+
+async def hashtag_feed(
+    db: AsyncSession, viewer: User, tag: str, limit: int, before: uuid.UUID | None
+) -> PostPage:
+    """Top-level, non-deleted posts carrying a given hashtag."""
+    limit = max(1, min(limit, MAX_PAGE))
+    tagged = select(PostHashtag.post_id).where(PostHashtag.tag == tag.lower())
+    query = (
+        select(Post)
+        .where(
+            Post.id.in_(tagged),
+            Post.deleted_at.is_(None),
+            Post.parent_id.is_(None),
+        )
+        .order_by(Post.id.desc())
+        .limit(limit + 1)
+    )
+    if before is not None:
+        query = query.where(Post.id < before)
+    rows, cursor = _page(list((await db.scalars(query)).all()), limit)
+    return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
+
+
+async def trending_hashtags(
+    db: AsyncSession, limit: int = 10, window_hours: int = 168
+) -> list[dict[str, int | str]]:
+    """Most-used hashtags within the recent window (default 7 days)."""
+    since = _now() - timedelta(hours=window_hours)
+    rows = (
+        await db.execute(
+            select(PostHashtag.tag, func.count().label("n"))
+            .where(PostHashtag.created_at >= since)
+            .group_by(PostHashtag.tag)
+            .order_by(func.count().desc(), PostHashtag.tag)
+            .limit(limit)
+        )
+    ).all()
+    return [{"tag": tag, "count": n} for tag, n in rows]
 
 
 async def posts_count(db: AsyncSession, author_id: uuid.UUID) -> int:

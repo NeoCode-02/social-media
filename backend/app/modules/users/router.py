@@ -3,7 +3,7 @@ import uuid
 
 import anyio
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -89,6 +89,31 @@ async def get_me(
     return UserMe.model_validate(user).model_copy(update=social)
 
 
+async def _profile(db: AsyncSession, user: User, viewer: User) -> UserProfile:
+    social = await _social(db, user, viewer)
+    profile = UserProfile.model_validate(user).model_copy(update=social)
+    # Hide rich details from outsiders of a private account.
+    if not social["can_view_posts"]:
+        profile = profile.model_copy(
+            update={"bio": None, "location": None, "website": None, "last_seen": None}
+        )
+    return profile
+
+
+@router.get("/by-username/{username}", response_model=UserProfile)
+async def get_user_by_username(
+    username: str,
+    viewer: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserProfile:
+    user = (
+        await db.scalars(select(User).where(func.lower(User.username) == username.lower()))
+    ).first()
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    return await _profile(db, user, viewer)
+
+
 @router.get("/{user_id}", response_model=UserProfile)
 async def get_user_profile(
     user_id: uuid.UUID,
@@ -98,14 +123,7 @@ async def get_user_profile(
     user = await db.get(User, user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
-    social = await _social(db, user, viewer)
-    profile = UserProfile.model_validate(user).model_copy(update=social)
-    # Hide rich details from outsiders of a private account.
-    if not social["can_view_posts"]:
-        profile = profile.model_copy(
-            update={"bio": None, "location": None, "website": None, "last_seen": None}
-        )
-    return profile
+    return await _profile(db, user, viewer)
 
 
 @router.patch("/me", response_model=UserMe)

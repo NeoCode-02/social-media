@@ -1,6 +1,14 @@
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 
-import { globalFeed, listReplies, listTimeline, userFeed } from '@/api/posts'
+import {
+  globalFeed,
+  hashtagFeed,
+  listReplies,
+  listTimeline,
+  searchPosts,
+  trendingHashtags,
+  userFeed,
+} from '@/api/posts'
 import type { PostPage } from '@/api/types'
 
 const nextCursor = (last: PostPage) => last.next_cursor ?? undefined
@@ -29,6 +37,7 @@ export function useUserFeed(userId: string) {
     queryFn: ({ pageParam }) => userFeed(userId, pageParam).then((r) => r.data),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: nextCursor,
+    enabled: Boolean(userId) && !userId.startsWith('@'),
   })
 }
 
@@ -38,5 +47,33 @@ export function useReplies(postId: string) {
     queryFn: ({ pageParam }) => listReplies(postId, pageParam).then((r) => r.data),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: nextCursor,
+  })
+}
+
+export function useHashtagFeed(tag: string) {
+  return useInfiniteQuery({
+    queryKey: ['hashtag', tag],
+    queryFn: ({ pageParam }) => hashtagFeed(tag, pageParam).then((r) => r.data),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: nextCursor,
+    enabled: Boolean(tag),
+  })
+}
+
+export function usePostSearch(q: string) {
+  return useInfiniteQuery({
+    queryKey: ['postSearch', q],
+    queryFn: ({ pageParam }) => searchPosts(q, pageParam).then((r) => r.data),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: nextCursor,
+    enabled: q.length > 0,
+  })
+}
+
+export function useTrending() {
+  return useQuery({
+    queryKey: ['trending'],
+    queryFn: () => trendingHashtags().then((r) => r.data),
+    staleTime: 60_000,
   })
 }

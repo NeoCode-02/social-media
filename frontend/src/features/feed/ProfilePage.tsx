@@ -10,12 +10,12 @@ import {
   MessageSquare,
   UserCheck,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { createDm } from '@/api/chats'
 import { followUser, listFollowRequests, unfollowUser } from '@/api/follows'
-import { getUser } from '@/api/users'
+import { getUser, getUserByUsername } from '@/api/users'
 import type { UserProfile } from '@/api/types'
 import { Avatar } from '@/components/Avatar'
 import { FollowRequests } from '@/features/profile/FollowRequests'
@@ -36,12 +36,26 @@ export function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [showRequests, setShowRequests] = useState(false)
 
+  // A `@handle` URL is resolved to the user's id, then redirected to /u/{id}.
+  const byUsername = userId.startsWith('@')
+  const lookup = useQuery({
+    queryKey: ['userByUsername', userId],
+    queryFn: () => getUserByUsername(userId.slice(1)).then((r) => r.data),
+    enabled: byUsername,
+  })
+  useEffect(() => {
+    if (byUsername && lookup.data) {
+      qc.setQueryData(['user', lookup.data.id], lookup.data)
+      navigate(`/u/${lookup.data.id}`, { replace: true })
+    }
+  }, [byUsername, lookup.data, navigate, qc])
+
   const { data: profile, isLoading } = useQuery({
     queryKey: ['user', userId],
     queryFn: async () => (await getUser(userId)).data,
-    enabled: Boolean(userId),
+    enabled: Boolean(userId) && !byUsername,
   })
-  const isMe = me?.id === userId
+  const isMe = Boolean(profile && me?.id === profile.id)
   const canViewPosts = Boolean(profile?.can_view_posts)
   const feed = useUserFeed(userId)
   const posts = (feed.data?.pages ?? []).flatMap((p) => p.posts)
