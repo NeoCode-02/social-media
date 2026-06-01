@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Home, LogOut, MessagesSquare } from 'lucide-react'
+import { Home, LogOut, MessagesSquare, Search } from 'lucide-react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { logout } from '@/api/auth'
@@ -18,6 +18,7 @@ export function AppShell() {
   const { pathname } = useLocation()
 
   const feedActive = pathname.startsWith('/feed') || pathname.startsWith('/post')
+  const exploreActive = pathname.startsWith('/explore')
   const chatActive = pathname.startsWith('/messages') || pathname.startsWith('/c/')
   const meActive = pathname === `/u/${me?.id}`
 
@@ -42,6 +43,9 @@ export function AppShell() {
 
         <RailButton label="Home" active={feedActive} onClick={() => navigate('/feed')}>
           <Home size={22} />
+        </RailButton>
+        <RailButton label="Explore" active={exploreActive} onClick={() => navigate('/explore')}>
+          <Search size={22} />
         </RailButton>
         <RailButton label="Messages" active={chatActive} onClick={() => navigate('/messages')}>
           <MessagesSquare size={22} />

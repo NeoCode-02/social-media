@@ -32,3 +32,7 @@ class TokenResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     detail: str
+
+
+class TicketResponse(BaseModel):
+    ticket: str

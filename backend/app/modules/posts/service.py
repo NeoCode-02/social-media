@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,7 +86,10 @@ async def like(db: AsyncSession, user: User, post_id: uuid.UUID) -> None:
     existing = await db.get(Like, {"user_id": user.id, "post_id": post_id})
     if existing is None:
         db.add(Like(user_id=user.id, post_id=post_id))
-        await db.commit()
+        try:
+            await db.commit()
+        except sa.exc.IntegrityError:
+            await db.rollback()
 
 
 async def unlike(db: AsyncSession, user: User, post_id: uuid.UUID) -> None:
@@ -247,6 +251,25 @@ async def home_timeline(
             Post.deleted_at.is_(None),
             Post.parent_id.is_(None),
             or_(Post.author_id == viewer.id, Post.author_id.in_(followees)),
+        )
+        .order_by(Post.id.desc())
+        .limit(limit + 1)
+    )
+    if before is not None:
+        q = q.where(Post.id < before)
+    rows, cursor = _page(list((await db.scalars(q)).all()), limit)
+    return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
+
+
+async def global_timeline(
+    db: AsyncSession, viewer: User, limit: int, before: uuid.UUID | None
+) -> PostPage:
+    limit = max(1, min(limit, MAX_PAGE))
+    q = (
+        select(Post)
+        .where(
+            Post.deleted_at.is_(None),
+            Post.parent_id.is_(None),
         )
         .order_by(Post.id.desc())
         .limit(limit + 1)

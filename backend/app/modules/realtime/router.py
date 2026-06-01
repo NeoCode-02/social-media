@@ -2,11 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
 from app.core.db import SessionLocal
-from app.core.security import decode_token
+from app.modules.auth.service import verify_ws_ticket
 from app.modules.chats.models import ChatMember
 from app.modules.realtime import events
 from app.modules.realtime.manager import manager
@@ -15,11 +14,13 @@ from app.modules.users.models import User
 router = APIRouter(tags=["realtime"])
 
 
-async def _authenticate(token: str) -> uuid.UUID | None:
+async def _authenticate(ticket: str) -> uuid.UUID | None:
+    user_id_str = await verify_ws_ticket(ticket)
+    if not user_id_str:
+        return None
     try:
-        payload = decode_token(token, "access")
-        user_id = uuid.UUID(payload["sub"])
-    except (jwt.PyJWTError, ValueError, KeyError):
+        user_id = uuid.UUID(user_id_str)
+    except ValueError:
         return None
     async with SessionLocal() as db:
         user = await db.get(User, user_id)
@@ -29,8 +30,8 @@ async def _authenticate(token: str) -> uuid.UUID | None:
 
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)) -> None:
-    user_id = await _authenticate(token)
+async def websocket_endpoint(websocket: WebSocket, ticket: str = Query(...)) -> None:
+    user_id = await _authenticate(ticket)
     if user_id is None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

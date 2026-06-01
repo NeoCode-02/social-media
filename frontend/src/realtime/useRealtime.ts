@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 
 import { useQueryClient } from '@tanstack/react-query'
 
-import { getAccessToken } from '@/api/client'
+import { getWsTicket } from '@/api/auth'
 import type { Chat, Message } from '@/api/types'
 import { prependToTimeline } from '@/features/feed/postCache'
 import { useRealtimeStore } from '@/store/realtime'
@@ -27,9 +27,8 @@ export function useRealtime(): void {
   const timers = useRef<Record<string, number>>({})
 
   useEffect(() => {
-    const token = getAccessToken()
-    if (!token) return
-    wsClient.connect(token)
+    const activeTimers = timers.current
+    wsClient.connect(getWsTicket)
 
     const off = wsClient.on((ev) => {
       switch (ev.type) {
@@ -75,6 +74,7 @@ export function useRealtime(): void {
     })
     return () => {
       off()
+      Object.values(activeTimers).forEach((t) => clearTimeout(t))
     }
   }, [qc, setPresence, setTyping])
 }
