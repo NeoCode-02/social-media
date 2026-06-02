@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
 import { FileText, ImageIcon, Mic, Paperclip, Reply, SendHorizontal, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import TextareaAutosize from 'react-textarea-autosize'
 
 import { sendMessage, uploadAttachment, type UploadOpts } from '@/api/chats'
@@ -33,14 +33,17 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
   const typingRef = useRef(false)
   const stopTimer = useRef<number | undefined>(undefined)
 
-  function appendMessage(data: Message) {
-    qc.setQueryData<Message[]>(['messages', chatId], (old) => {
-      if (!old) return [data]
-      if (old.some((m) => m.id === data.id)) return old
-      return [...old, data]
-    })
-    qc.invalidateQueries({ queryKey: ['chats'] })
-  }
+  const appendMessage = useCallback(
+    (data: Message) => {
+      qc.setQueryData<Message[]>(['messages', chatId], (old) => {
+        if (!old) return [data]
+        if (old.some((m) => m.id === data.id)) return old
+        return [...old, data]
+      })
+      qc.invalidateQueries({ queryKey: ['chats'] })
+    },
+    [qc, chatId],
+  )
 
   function signalStop() {
     if (typingRef.current) {
@@ -80,17 +83,22 @@ export function MessageInput({ chatId, replyTo, onCancelReply }: Props) {
     }
   }
 
-  async function onVoiceSend(file: File, durationMs: number) {
-    setRecording(false)
-    setSending(true)
-    try {
-      const { data: att } = await uploadAttachment(chatId, file, { isVoice: true, durationMs })
-      const { data } = await sendMessage(chatId, undefined, [att.id])
-      appendMessage(data)
-    } finally {
-      setSending(false)
-    }
-  }
+  // Stable identity: VoiceRecorder keys its mic effect on this, so a fresh
+  // function each render would tear down and restart an in-progress recording.
+  const onVoiceSend = useCallback(
+    async (file: File, durationMs: number) => {
+      setRecording(false)
+      setSending(true)
+      try {
+        const { data: att } = await uploadAttachment(chatId, file, { isVoice: true, durationMs })
+        const { data } = await sendMessage(chatId, undefined, [att.id])
+        appendMessage(data)
+      } finally {
+        setSending(false)
+      }
+    },
+    [chatId, appendMessage],
+  )
 
   async function doSubmit() {
     const content = text.trim()

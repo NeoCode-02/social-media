@@ -88,7 +88,7 @@ def _is_admin_email(email: str) -> bool:
 async def verify_email(db: AsyncSession, email: str, code: str) -> User:
     redis = get_redis()
     stored = await redis.get(CODE_KEY.format(email=email))
-    if stored is None or stored != code:
+    if stored is None or not secrets.compare_digest(stored, code):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired code",
@@ -157,7 +157,9 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
 
     jti, sub = payload["jti"], payload["sub"]
     key = REFRESH_KEY.format(jti=jti)
-    stored_raw = await redis.get(key)
+    # Atomically read-and-claim the token: concurrent rotations of the same
+    # token can't both win (the loser gets None), closing the TOCTOU race.
+    stored_raw = await redis.getdel(key)
 
     if stored_raw is None:
         # POTENTIAL THEFT: Token is not in the allowlist.
@@ -177,12 +179,14 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
     if stored["sub"] != sub:
         raise _invalid_refresh
 
-    # Mark this token as rotated/used for a short grace period to detect reuse.
-    await redis.delete(key)
+    # Key already claimed atomically above (getdel). Mark this jti as used so a
+    # later replay of the same token is detected as reuse.
     res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
     if not isinstance(res_srem, int):
         await res_srem
-    await redis.set(f"reused:{jti}", "1", ex=3600)
+    # Keep the reuse marker for as long as the stolen token could remain valid,
+    # otherwise replay after the marker expires escapes family-revocation.
+    await redis.set(f"reused:{jti}", "1", ex=settings.refresh_token_ttl_seconds)
 
     access = create_access_token(sub)
     new_refresh, new_jti = create_token_family_member(sub, jti)

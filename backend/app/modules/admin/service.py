@@ -1,10 +1,13 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.sql import escape_like
 from app.modules.admin.models import DISMISSED, OPEN, POST, RESOLVED, USER, Report
 from app.modules.admin.schemas import (
     AdminStats,
@@ -22,9 +25,10 @@ MAX_PAGE = 50
 
 
 def _today_start() -> datetime:
-    now = datetime.now(UTC)
-    return now - timedelta(hours=now.hour, minutes=now.minute, seconds=now.second,
-                           microseconds=now.microsecond)
+    """Midnight of the current day in the configured stats timezone, as UTC."""
+    tz = ZoneInfo(settings.stats_timezone)
+    local_midnight = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    return local_midnight.astimezone(UTC)
 
 
 async def stats(db: AsyncSession) -> AdminStats:
@@ -67,9 +71,13 @@ async def list_users(
     limit = max(1, min(limit, MAX_PAGE))
     stmt = select(User)
     if q:
-        like = f"%{q}%"
+        like = f"%{escape_like(q)}%"
         stmt = stmt.where(
-            or_(User.username.ilike(like), User.email.ilike(like), User.display_name.ilike(like))
+            or_(
+                User.username.ilike(like, escape="\\"),
+                User.email.ilike(like, escape="\\"),
+                User.display_name.ilike(like, escape="\\"),
+            )
         )
     stmt = stmt.order_by(User.created_at.desc()).offset(offset).limit(limit + 1)
     rows = list((await db.scalars(stmt)).all())
