@@ -1,18 +1,14 @@
-import { useReducer, useState } from 'react'
+import { useState } from 'react'
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { listMessages } from '@/api/chats'
 import type { Message } from '@/api/types'
 
-// Chats whose full history has been loaded (module scope: survives remounts).
-const endedChats = new Set<string>()
-
 /** Loads a chat's messages (chronological) with "load older" pagination. */
 export function useMessages(chatId: string) {
   const qc = useQueryClient()
   const [loadingOlder, setLoadingOlder] = useState(false)
-  const [, bump] = useReducer((n: number) => n + 1, 0)
 
   const query = useQuery({
     queryKey: ['messages', chatId],
@@ -22,16 +18,24 @@ export function useMessages(chatId: string) {
     },
   })
 
+  // "Reached the start of history" flag lives in the cache (not module scope):
+  // survives remounts but is cleared on logout via qc.clear().
+  const { data: ended = false } = useQuery<boolean>({
+    queryKey: ['messages', chatId, 'ended'],
+    queryFn: () => false,
+    enabled: false,
+    initialData: false,
+  })
+
   const loadOlder = async () => {
     const current = qc.getQueryData<Message[]>(['messages', chatId])
-    if (!current || current.length === 0 || loadingOlder || endedChats.has(chatId)) return
+    if (!current || current.length === 0 || loadingOlder || ended) return
     setLoadingOlder(true)
     try {
       const { data } = await listMessages(chatId, current[0].id)
       const older = data.messages.slice().reverse()
       if (older.length === 0) {
-        endedChats.add(chatId)
-        bump()
+        qc.setQueryData<boolean>(['messages', chatId, 'ended'], true)
       } else {
         qc.setQueryData<Message[]>(['messages', chatId], [...older, ...current])
       }
@@ -45,6 +49,6 @@ export function useMessages(chatId: string) {
     isLoading: query.isLoading,
     loadOlder,
     loadingOlder,
-    hasMore: !endedChats.has(chatId),
+    hasMore: !ended,
   }
 }

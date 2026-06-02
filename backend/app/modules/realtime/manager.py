@@ -2,8 +2,6 @@ import asyncio
 import json
 import logging
 import uuid
-from collections.abc import Iterable
-from typing import Any
 
 from fastapi import WebSocket
 
@@ -31,9 +29,6 @@ class ConnectionManager:
 
     def online_count(self, user_id: uuid.UUID) -> int:
         return len(self._local.get(user_id, ()))
-
-    async def deliver(self, recipients: Iterable[str], event: dict[str, Any]) -> None:
-        pass
 
 
 manager = ConnectionManager()

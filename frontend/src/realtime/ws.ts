@@ -24,31 +24,41 @@ class WSClient {
     this.connecting = true
     try {
       const ticket = await this.getTicket()
-      if (!ticket || this.closedByUser) return
+      if (this.closedByUser) return
+      if (!ticket) {
+        // Transient ticket failure (backend blip / token refresh race) — retry
+        // instead of silently giving up, otherwise realtime stays dead forever.
+        this.scheduleReconnect()
+        return
+      }
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
       this.ws = new WebSocket(`${proto}://${location.host}/ws?ticket=${ticket}`)
 
-    this.ws.onopen = () => {
-      this.retry = 0
-    }
-    this.ws.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data) as RealtimeEvent
-        this.handlers.forEach((h) => h(event))
-      } catch {
-        /* ignore malformed frames */
+      this.ws.onopen = () => {
+        this.retry = 0
       }
-    }
-    this.ws.onclose = () => {
-      if (this.closedByUser) return
-      const delay = Math.min(1000 * 2 ** this.retry, 15000)
-      this.retry += 1
-      setTimeout(() => this.open(), delay)
-    }
+      this.ws.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data) as RealtimeEvent
+          this.handlers.forEach((h) => h(event))
+        } catch {
+          /* ignore malformed frames */
+        }
+      }
+      this.ws.onclose = () => this.scheduleReconnect()
       this.ws.onerror = () => this.ws?.close()
+    } catch {
+      this.scheduleReconnect()
     } finally {
       this.connecting = false
     }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.closedByUser) return
+    const delay = Math.min(1000 * 2 ** this.retry, 15000)
+    this.retry += 1
+    setTimeout(() => void this.open(), delay)
   }
 
   send(payload: Record<string, unknown>): void {

@@ -33,6 +33,11 @@ async def get_current_user(
     user = await db.get(User, user_id)
     if user is None:
         raise _credentials_error
+    if user.is_banned:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been banned",
+        )
     return user
 
 
@@ -43,5 +48,16 @@ async def get_current_verified_user(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email not verified",
+        )
+    return user
+
+
+async def get_current_admin(
+    user: User = Depends(get_current_verified_user),
+) -> User:
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
         )
     return user
