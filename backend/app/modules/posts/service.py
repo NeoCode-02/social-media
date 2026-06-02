@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sql import escape_like
 from app.modules.follows.models import ACCEPTED, Follow
 from app.modules.messages.models import Attachment
 from app.modules.posts.models import Like, Post, PostHashtag, PostView
@@ -425,7 +426,7 @@ async def admin_list_posts(
     limit = max(1, min(limit, MAX_PAGE))
     query = select(Post).where(Post.deleted_at.is_(None)).order_by(Post.id.desc()).limit(limit + 1)
     if q:
-        query = query.where(Post.text.ilike(f"%{q}%"))
+        query = query.where(Post.text.ilike(f"%{escape_like(q)}%", escape="\\"))
     if before is not None:
         query = query.where(Post.id < before)
     rows, cursor = _page(list((await db.scalars(query)).all()), limit)
@@ -437,13 +438,13 @@ async def search_posts(
 ) -> PostPage:
     """Substring search over top-level, non-deleted post text."""
     limit = max(1, min(limit, MAX_PAGE))
-    pattern = f"%{q}%"
+    pattern = f"%{escape_like(q)}%"
     query = (
         select(Post)
         .where(
             Post.deleted_at.is_(None),
             Post.parent_id.is_(None),
-            Post.text.ilike(pattern),
+            Post.text.ilike(pattern, escape="\\"),
         )
         .order_by(Post.id.desc())
         .limit(limit + 1)

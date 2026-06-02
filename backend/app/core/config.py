@@ -21,8 +21,15 @@ class Settings(BaseSettings):
     # CORS (comma-separated origins)
     cors_origins: str = "http://localhost:5173"
 
+    # Set True only when running behind a trusted reverse proxy that sets
+    # X-Forwarded-For; otherwise clients could spoof it to evade rate limits.
+    trust_proxy: bool = False
+
     # Admins (comma-separated emails auto-promoted to admin on login)
     admin_emails: str = ""
+
+    # Timezone for admin "today" stat boundaries (IANA name, e.g. "Asia/Tashkent").
+    stats_timezone: str = "UTC"
 
     # Postgres
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/social_media"

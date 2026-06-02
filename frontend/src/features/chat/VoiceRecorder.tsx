@@ -24,6 +24,12 @@ export function VoiceRecorder({ onSend, onCancel }: Props) {
   const streamRef = useRef<MediaStream | null>(null)
   const startedRef = useRef(0)
   const sendOnStopRef = useRef(false)
+  // Keep the latest onSend without re-running the mic effect (which would stop
+  // the stream and discard captured audio mid-recording).
+  const onSendRef = useRef(onSend)
+  useEffect(() => {
+    onSendRef.current = onSend
+  })
 
   useEffect(() => {
     let timer: number | undefined
@@ -49,7 +55,7 @@ export function VoiceRecorder({ onSend, onCancel }: Props) {
           const blob = new Blob(chunksRef.current, { type })
           const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm'
           const file = new File([blob], `voice-${Date.now()}.${ext}`, { type })
-          onSend(file, Date.now() - startedRef.current)
+          onSendRef.current(file, Date.now() - startedRef.current)
         }
         startedRef.current = Date.now()
         rec.start()
@@ -65,7 +71,7 @@ export function VoiceRecorder({ onSend, onCancel }: Props) {
       clearInterval(timer)
       streamRef.current?.getTracks().forEach((t) => t.stop())
     }
-  }, [onSend])
+  }, [])
 
   function stop(send: boolean) {
     sendOnStopRef.current = send

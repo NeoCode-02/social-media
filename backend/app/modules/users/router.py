@@ -11,6 +11,7 @@ from app.core.db import get_db
 from app.core.deps import get_current_user, get_current_verified_user
 from app.core.images import make_thumbnail
 from app.core.rate_limit import rate_limit
+from app.core.sql import escape_like
 from app.core.storage import delete_object, public_url, put_object
 from app.modules.follows import service as follows_service
 from app.modules.follows.models import ACCEPTED
@@ -76,7 +77,9 @@ async def search_users(
     db: AsyncSession = Depends(get_db),
 ) -> list[User]:
     excluded = await relations.blocked_ids(db, user.id)
-    stmt = select(User).where(User.id != user.id, User.username.ilike(f"%{q}%"))
+    stmt = select(User).where(
+        User.id != user.id, User.username.ilike(f"%{escape_like(q)}%", escape="\\")
+    )
     if excluded:
         stmt = stmt.where(User.id.notin_(excluded))
     rows = await db.scalars(stmt.order_by(User.username).limit(10))

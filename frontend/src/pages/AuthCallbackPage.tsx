@@ -10,6 +10,8 @@ export function AuthCallbackPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.slice(1))
     const token = params.get('access_token')
+    // Strip the token from the URL so it doesn't linger in history / Referer.
+    window.history.replaceState(null, '', window.location.pathname)
     if (!token) {
       navigate('/login', { replace: true })
       return

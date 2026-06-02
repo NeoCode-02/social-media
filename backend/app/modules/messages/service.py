@@ -49,7 +49,16 @@ def process_blob(
             thumb_key = f"{prefix}/thumb/{uuid.uuid4().hex}.jpg"
             put_object(thumb_key, thumb, "image/jpeg")
     put_object(key, data, mime)
-    return {"storage_key": key, "thumbnail_key": thumb_key, "width": width, "height": height}
+    # Return the *effective* mime/size of the stored bytes (compression may have
+    # changed both) so the DB row matches the object, not the upload.
+    return {
+        "storage_key": key,
+        "thumbnail_key": thumb_key,
+        "width": width,
+        "height": height,
+        "mime": mime,
+        "size": len(data),
+    }
 
 
 async def record_attachment(
