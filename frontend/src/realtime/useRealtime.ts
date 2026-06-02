@@ -25,10 +25,21 @@ export function useRealtime(): void {
   const setPresence = useRealtimeStore((s) => s.setPresence)
   const setTyping = useRealtimeStore((s) => s.setTyping)
   const timers = useRef<Record<string, number>>({})
+  const chatsRefreshTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     const activeTimers = timers.current
     wsClient.connect(getWsTicket)
+
+    // Coalesce chat-list refreshes: a burst of messages should cost one refetch,
+    // not one per message. The server recompute keeps unread counts accurate.
+    const scheduleChatsRefresh = () => {
+      if (chatsRefreshTimer.current) return
+      chatsRefreshTimer.current = window.setTimeout(() => {
+        chatsRefreshTimer.current = undefined
+        qc.invalidateQueries({ queryKey: ['chats'] })
+      }, 400)
+    }
 
     const off = wsClient.on((ev) => {
       switch (ev.type) {
@@ -36,7 +47,7 @@ export function useRealtime(): void {
         case 'message.edited':
         case 'message.deleted':
           qc.setQueryData<Message[]>(['messages', ev.chat_id], (old) => upsert(old, ev.message))
-          qc.invalidateQueries({ queryKey: ['chats'] })
+          scheduleChatsRefresh()
           break
         case 'presence':
           setPresence(ev.user_id, ev.status === 'online')
@@ -78,6 +89,7 @@ export function useRealtime(): void {
     return () => {
       off()
       Object.values(activeTimers).forEach((t) => clearTimeout(t))
+      if (chatsRefreshTimer.current) clearTimeout(chatsRefreshTimer.current)
     }
   }, [qc, setPresence, setTyping])
 }

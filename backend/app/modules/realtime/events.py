@@ -19,8 +19,6 @@ from app.modules.follows.models import Follow
 from app.modules.messages.schemas import MessageRead
 from app.modules.posts.schemas import PostRead
 
-CHANNEL = "realtime"
-
 
 async def _chat_member_ids(db: AsyncSession, chat_id: uuid.UUID) -> list[uuid.UUID]:
     return list(

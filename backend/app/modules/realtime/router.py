@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 from app.core.db import SessionLocal
 from app.modules.auth.service import verify_ws_ticket
 from app.modules.chats.models import ChatMember
+from app.modules.messages.models import Message
 from app.modules.realtime import events
 from app.modules.realtime.manager import manager
 from app.modules.users.models import User
@@ -79,6 +80,16 @@ async def _handle_client_event(user_id: uuid.UUID, data: dict[str, Any]) -> None
             try:
                 message_id = uuid.UUID(data["last_read_message_id"])
             except ValueError:
+                return
+            # Validate the message belongs to this chat (parity with the HTTP
+            # mark_read path) so a client can't poison its own unread counter
+            # with an arbitrary id.
+            message = await db.get(Message, message_id)
+            if message is None or message.chat_id != chat_id:
+                return
+            # Forward-only: ignore acks older than what we already recorded.
+            current = member.last_read_message_id
+            if current is not None and message_id <= current:
                 return
             member.last_read_message_id = message_id
             await db.commit()

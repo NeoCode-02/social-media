@@ -1,6 +1,17 @@
 from fastapi import Depends, HTTPException, Request, status
 
+from app.core.config import settings
 from app.core.redis import get_redis
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP. Only honor X-Forwarded-For behind a trusted proxy,
+    otherwise a client can spoof the header to dodge the limiter."""
+    if settings.trust_proxy:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def rate_limit(limit: int, window_seconds: int, scope: str):
@@ -12,12 +23,14 @@ def rate_limit(limit: int, window_seconds: int, scope: str):
     """
 
     async def _dep(request: Request) -> None:
-        client = request.client.host if request.client else "unknown"
-        key = f"rl:{scope}:{client}"
+        key = f"rl:{scope}:{_client_ip(request)}"
         redis = get_redis()
-        count = await redis.incr(key)
-        if count == 1:
-            await redis.expire(key, window_seconds)
+        # Atomic incr + (first-time) expire so the window is always armed, even
+        # if the process dies right after the increment.
+        async with redis.pipeline(transaction=True) as pipe:
+            pipe.incr(key)
+            pipe.expire(key, window_seconds, nx=True)
+            count, _ = await pipe.execute()
         if count > limit:
             ttl = await redis.ttl(key)
             raise HTTPException(

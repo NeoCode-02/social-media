@@ -27,7 +27,55 @@ export interface UserProfile extends UserPublic {
 export interface UserMe extends UserProfile {
   email: string
   email_verified: boolean
+  is_admin: boolean
   pending_requests: number
+}
+
+export interface AdminStats {
+  total_users: number
+  total_posts: number
+  new_users_today: number
+  new_posts_today: number
+  banned_users: number
+  private_accounts: number
+  admins: number
+  open_reports: number
+}
+
+export interface AdminUser {
+  id: string
+  username: string
+  display_name: string
+  email: string
+  avatar_url: string | null
+  email_verified: boolean
+  is_admin: boolean
+  is_banned: boolean
+  is_private: boolean
+  created_at: string
+}
+
+export interface AdminUserPage {
+  users: AdminUser[]
+  next_cursor: string | null
+}
+
+export type ReportTarget = 'post' | 'user'
+
+export interface Report {
+  id: string
+  target_type: ReportTarget
+  reason: string
+  status: 'open' | 'resolved' | 'dismissed'
+  created_at: string
+  reporter: UserPublic
+  post: Post | null
+  target_user: UserPublic | null
+}
+
+export interface ReportPage {
+  reports: Report[]
+  next_cursor: string | null
 }
 
 export interface Attachment {

@@ -81,10 +81,14 @@ async def request_email_code(db: AsyncSession, email: str) -> None:
     await _store_and_send_code(email)
 
 
+def _is_admin_email(email: str) -> bool:
+    return email.lower() in settings.admin_email_set
+
+
 async def verify_email(db: AsyncSession, email: str, code: str) -> User:
     redis = get_redis()
     stored = await redis.get(CODE_KEY.format(email=email))
-    if stored is None or stored != code:
+    if stored is None or not secrets.compare_digest(stored, code):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired code",
@@ -93,6 +97,8 @@ async def verify_email(db: AsyncSession, email: str, code: str) -> User:
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.email_verified = True
+    if _is_admin_email(user.email):
+        user.is_admin = True
     await db.commit()
     await redis.delete(CODE_KEY.format(email=email))
     return user
@@ -109,6 +115,11 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User:
         raise _invalid_credentials
     if not await verify_password(user.password_hash, password):
         raise _invalid_credentials
+    if user.is_banned:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned")
+    if _is_admin_email(user.email) and not user.is_admin:
+        user.is_admin = True
+        await db.commit()
     return user
 
 
@@ -146,7 +157,9 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
 
     jti, sub = payload["jti"], payload["sub"]
     key = REFRESH_KEY.format(jti=jti)
-    stored_raw = await redis.get(key)
+    # Atomically read-and-claim the token: concurrent rotations of the same
+    # token can't both win (the loser gets None), closing the TOCTOU race.
+    stored_raw = await redis.getdel(key)
 
     if stored_raw is None:
         # POTENTIAL THEFT: Token is not in the allowlist.
@@ -166,12 +179,14 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
     if stored["sub"] != sub:
         raise _invalid_refresh
 
-    # Mark this token as rotated/used for a short grace period to detect reuse.
-    await redis.delete(key)
+    # Key already claimed atomically above (getdel). Mark this jti as used so a
+    # later replay of the same token is detected as reuse.
     res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
     if not isinstance(res_srem, int):
         await res_srem
-    await redis.set(f"reused:{jti}", "1", ex=3600)
+    # Keep the reuse marker for as long as the stolen token could remain valid,
+    # otherwise replay after the marker expires escapes family-revocation.
+    await redis.set(f"reused:{jti}", "1", ex=settings.refresh_token_ttl_seconds)
 
     access = create_access_token(sub)
     new_refresh, new_jti = create_token_family_member(sub, jti)
@@ -249,10 +264,17 @@ async def get_or_create_oauth_user(
     if account is not None:
         user = await db.get(User, account.user_id)
         assert user is not None
+        if user.is_banned:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned")
+        if _is_admin_email(user.email) and not user.is_admin:
+            user.is_admin = True
+            await db.commit()
         return user
 
     # Link to an existing email account, or create a new verified user.
     user = await db.scalar(select(User).where(User.email == email))
+    if user is not None and user.is_banned:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been banned")
     if user is None:
         user = User(
             email=email,
@@ -262,6 +284,8 @@ async def get_or_create_oauth_user(
         )
         db.add(user)
         await db.flush()
+    if _is_admin_email(email):
+        user.is_admin = True
     user.oauth_accounts.append(OAuthAccount(provider=provider, provider_user_id=provider_user_id))
     await db.commit()
     await db.refresh(user)

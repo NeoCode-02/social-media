@@ -1,14 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Ban, MoreHorizontal, Volume2, VolumeX } from 'lucide-react'
+import { Ban, Flag, MoreHorizontal, Volume2, VolumeX } from 'lucide-react'
 import { useState } from 'react'
 
 import { blockUser, muteUser, unblockUser, unmuteUser } from '@/api/relations'
 import type { UserProfile } from '@/api/types'
+import { ReportDialog } from '@/components/ReportDialog'
 
 export function UserMenu({ profile }: { profile: UserProfile }) {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [reporting, setReporting] = useState(false)
 
   function refresh() {
     qc.invalidateQueries({ queryKey: ['user', profile.id] })
@@ -52,6 +54,15 @@ export function UserMenu({ profile }: { profile: UserProfile }) {
             className="absolute right-0 top-12 z-20 w-44 overflow-hidden rounded-2xl border border-border bg-elev p-1.5 shadow-soft"
           >
             <button
+              onClick={() => {
+                setOpen(false)
+                setReporting(true)
+              }}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-cardhover"
+            >
+              <Flag size={16} /> Report
+            </button>
+            <button
               onClick={() => mute.mutate()}
               disabled={mute.isPending}
               className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-cardhover disabled:opacity-50"
@@ -68,6 +79,17 @@ export function UserMenu({ profile }: { profile: UserProfile }) {
               {profile.is_blocked ? 'Unblock' : 'Block'}
             </button>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {reporting && (
+          <ReportDialog
+            targetType="user"
+            targetId={profile.id}
+            label={`@${profile.username}`}
+            onClose={() => setReporting(false)}
+          />
         )}
       </AnimatePresence>
     </div>

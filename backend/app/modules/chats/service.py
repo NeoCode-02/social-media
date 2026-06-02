@@ -255,8 +255,12 @@ async def mark_read(
     message = await db.get(Message, message_id)
     if message is None or message.chat_id != chat_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Message not in this chat")
-    member.last_read_message_id = message_id
-    await db.commit()
+    # Read pointer only moves forward (UUIDv7 ids are monotonic) — a stale/older
+    # ack must not resurrect the unread badge.
+    current = member.last_read_message_id
+    if current is None or message_id > current:
+        member.last_read_message_id = message_id
+        await db.commit()
 
 
 async def add_members(
