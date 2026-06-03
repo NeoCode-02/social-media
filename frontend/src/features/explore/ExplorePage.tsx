@@ -88,6 +88,7 @@ export function ExplorePage() {
               loadingMore={postSearch.isFetchingNextPage}
               onLoadMore={postSearch.fetchNextPage}
               emptyText={`No posts for “${q}”.`}
+              emptyAction={{ label: 'Try trending tags', to: '/explore' }}
             />
           </>
         ) : (
@@ -119,6 +120,7 @@ export function ExplorePage() {
               loadingMore={feed.isFetchingNextPage}
               onLoadMore={feed.fetchNextPage}
               emptyText="No posts on the platform yet."
+              emptyAction={{ label: 'Be the first to post', to: '/feed' }}
             />
           </>
         )}

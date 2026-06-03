@@ -52,6 +52,13 @@ class Message(Timestamped, Base):
 
 class Attachment(UUIDPrimaryKey, Timestamped, Base):
     __tablename__ = "attachments"
+    __table_args__ = (
+        # Speeds up `WHERE chat_id = ? ORDER BY created_at` — used by the
+        # chat-scoped attachment scan during orphan cleanup and any future
+        # "media gallery per chat" feature. Single-column chat_id index alone
+        # forces a sort on the result.
+        sa.Index("ix_attachments_chat_id_created_at", "chat_id", "created_at"),
+    )
 
     # NULL until the message that owns it is sent (upload happens first).
     message_id: Mapped[uuid.UUID | None] = mapped_column(

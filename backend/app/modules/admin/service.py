@@ -102,6 +102,11 @@ async def set_banned(db: AsyncSession, admin: User, user_id: uuid.UUID, banned: 
     user = await _get_user(db, user_id)
     user.is_banned = banned
     await db.commit()
+    if banned:
+        # Live-kick any open WebSocket for this user. Best-effort.
+        from app.modules.realtime.router import mark_user_revoked
+
+        await mark_user_revoked(user_id)
     return user
 
 
@@ -125,6 +130,11 @@ async def delete_user(db: AsyncSession, admin: User, user_id: uuid.UUID) -> None
     if user_id == admin.id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot delete yourself")
     user = await _get_user(db, user_id)
+    from app.modules.realtime.router import mark_user_revoked
+
+    # Revoke the live session before deleting the row so the WS watcher
+    # sees the flag first; even if the delete races, the flag is in Redis.
+    await mark_user_revoked(user_id)
     await db.delete(user)
     await db.commit()
 

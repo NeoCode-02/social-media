@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Any
+from urllib.parse import quote
 
 import boto3
 from botocore.config import Config
@@ -32,13 +33,38 @@ def presigned_put_url(key: str, content_type: str) -> str:
     )
 
 
+def _sanitize_download_name(raw: str) -> tuple[str, str]:
+    """Make a user-supplied filename safe for Content-Disposition.
+
+    Rules (RFC 6266 / 6266 §5):
+      1. Drop all C0 controls (\\x00..\\x1F and \\x7F) — defends against header
+         injection via ``\\r\\n`` smuggling and against broken clients.
+      2. Cap length at 128 bytes (UTF-8).
+      3. Replace path separators (\\ and /) so the user can't forge paths.
+      4. Use ``filename*=<enc>`` so non-ASCII names render correctly; fall back
+         to an ASCII-only ``filename=`` for ancient clients.
+    """
+    cleaned = "".join(c for c in raw if c.isprintable() and c not in "\\/")
+    encoded = quote(cleaned, safe="")[:128]
+    ascii_fallback = "".join(c if 32 <= ord(c) < 127 else "_" for c in cleaned)[:128]
+    return encoded, ascii_fallback
+
+
 def presigned_get_url(key: str, download_name: str | None = None) -> str:
     """Presigned GET URL. If download_name is set, the browser saves the file
     (Content-Disposition: attachment) with that name instead of opening it."""
     params: dict[str, Any] = {"Bucket": settings.s3_bucket, "Key": key}
     if download_name:
-        safe = download_name.replace('"', "").replace("\\", "")
-        params["ResponseContentDisposition"] = f'attachment; filename="{safe}"'
+        encoded, ascii_fallback = _sanitize_download_name(download_name)
+        if not encoded:
+            return get_s3_client().generate_presigned_url(
+                "get_object", Params=params, ExpiresIn=settings.presign_expire_seconds
+            )
+        # filename*=UTF-8''… is the modern form; filename=… is the fallback.
+        params["ResponseContentDisposition"] = (
+            f"attachment; filename=\"{ascii_fallback}\"; "
+            f"filename*=UTF-8''{encoded}"
+        )
     return get_s3_client().generate_presigned_url(
         "get_object",
         Params=params,

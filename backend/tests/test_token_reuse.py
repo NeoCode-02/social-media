@@ -1,7 +1,11 @@
 from httpx import AsyncClient
 
 
-async def _make_user(client: AsyncClient, fake_redis, email: str, username: str):
+async def _make_user_with_refresh(
+    client: AsyncClient, fake_redis, email: str, username: str
+) -> str:
+    """Return only the initial refresh token (string) — needed for the
+    rotation/reuse test which passes it via cookies, not as a header."""
     await client.post(
         "/api/auth/register",
         json={
@@ -15,9 +19,12 @@ async def _make_user(client: AsyncClient, fake_redis, email: str, username: str)
     resp = await client.post("/api/auth/verify-email", json={"email": email, "code": code})
     return resp.cookies.get("refresh_token")
 
-async def test_refresh_token_reuse_detection(client: AsyncClient, fake_redis):
+
+async def test_refresh_token_reuse_detection(
+    client: AsyncClient, fake_redis
+):
     # 1. Register and get first refresh token
-    rt1 = await _make_user(client, fake_redis, "victim@example.com", "victim")
+    rt1 = await _make_user_with_refresh(client, fake_redis, "victim@example.com", "victim")
     assert rt1 is not None
 
     # 2. Rotate once to get rt2

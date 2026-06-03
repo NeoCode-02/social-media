@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.follows.models import ACCEPTED, PENDING, Follow
+from app.modules.follows.models import ACCEPTED, PENDING, Follow, FollowStatus
 from app.modules.relations import service as relations
 from app.modules.users.models import User
 
@@ -40,7 +40,7 @@ async def accept_request(db: AsyncSession, owner: User, follower_id: uuid.UUID) 
     row = await db.get(Follow, {"follower_id": follower_id, "followee_id": owner.id})
     if row is None or row.status != PENDING:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No pending request")
-    row.status = ACCEPTED
+    row.status = FollowStatus.ACCEPTED
     await db.commit()
 
 

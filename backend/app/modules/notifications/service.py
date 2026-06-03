@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.notifications.models import MENTION, Notification
@@ -71,7 +72,13 @@ async def notify(
         recipient_id=recipient_id, actor_id=actor_id, type=type, post_id=post_id
     )
     db.add(n)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # A concurrent request beat us to the unique (recipient, actor, type,
+        # post) row — the unique index guarantees the user sees exactly one.
+        await db.rollback()
+        return
     await db.refresh(n)
 
     actor = await db.get(User, actor_id)
