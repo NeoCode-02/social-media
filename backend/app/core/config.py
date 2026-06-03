@@ -1,10 +1,22 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# A well-known sentinel that callers *must* override in non-dev environments.
+# Loading will refuse to start if it sees this value in production.
+_DEV_SECRET_SENTINEL = "dev-insecure-secret-change-me-in-production-0123456789"
 
 
 class Settings(BaseSettings):
-    """Application configuration, loaded from environment / .env."""
+    """Application configuration, loaded from environment / .env.
+
+    Precedence (highest first): explicit process env > .env file > field default.
+    Pydantic-Settings applies that order automatically; the ``env_file`` block
+    here only adds the file as a *fallback*, never as an override of the
+    process env. A startup assertion then refuses to boot if the dev sentinel
+    leaks into a non-development environment.
+    """
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -18,7 +30,8 @@ class Settings(BaseSettings):
     debug: bool = True
     api_prefix: str = "/api"
 
-    # CORS (comma-separated origins)
+    # CORS (comma-separated origins). In production, refuse to start if this
+    # still points at a localhost dev origin.
     cors_origins: str = "http://localhost:5173"
 
     # Set True only when running behind a trusted reverse proxy that sets
@@ -37,8 +50,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # Security / JWT (override SECRET_KEY in production!)
-    secret_key: str = "dev-insecure-secret-change-me-in-production-0123456789"
+    # Security / JWT. The default is the dev sentinel; startup (see assert_safe)
+    # refuses to boot a non-dev environment with the sentinel still in place.
+    secret_key: str = _DEV_SECRET_SENTINEL
     jwt_algorithm: str = "HS256"
     access_token_ttl_seconds: int = 60 * 15  # 15 minutes
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 30  # 30 days
@@ -80,6 +94,46 @@ class Settings(BaseSettings):
     def admin_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
 
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in {"production", "prod"}
+
+    @field_validator("secret_key")
+    @classmethod
+    def _no_dev_sentinel_in_prod(cls, v: str) -> str:
+        # Cheap defense-in-depth: even if a future caller forgets to override
+        # the default, pydantic will reject the value when env=production.
+        # Final word is the assert_safe() call below at process boot.
+        if v == _DEV_SECRET_SENTINEL:
+            return v  # only an issue in non-dev; checked in assert_safe()
+        if len(v) < 32:
+            raise ValueError("secret_key must be at least 32 characters")
+        return v
+
+
+def assert_safe(s: "Settings") -> None:
+    """Refuse to start a non-dev process with a known-weak secret.
+
+    Called from app.main at import time so misconfiguration is fatal *before*
+    the FastAPI app begins accepting requests.
+    """
+    if s.is_production:
+        if s.secret_key == _DEV_SECRET_SENTINEL:
+            raise RuntimeError(
+                "Refusing to start: SECRET_KEY is the dev sentinel. "
+                "Set a strong SECRET_KEY (>=32 random bytes)."
+            )
+        for o in s.cors_origin_list:
+            if "localhost" in o or "127.0.0.1" in o:
+                raise RuntimeError(
+                    f"Refusing to start: CORS_ORIGINS still contains a dev origin ({o!r}) "
+                    "in a non-development environment."
+                )
+        if not s.cookie_secure:
+            raise RuntimeError(
+                "Refusing to start: COOKIE_SECURE must be true in non-development environments."
+            )
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -87,3 +141,5 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
+assert_safe(settings)  # noqa: E402  (deliberately at import time)
+

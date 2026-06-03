@@ -4,25 +4,6 @@ import app.modules.chats.router as chats_router
 import app.modules.messages.service as msg_service
 
 
-async def _make_user(
-    client: AsyncClient, fake_redis, email: str, username: str
-) -> tuple[dict[str, str], str]:
-    await client.post(
-        "/api/auth/register",
-        json={
-            "email": email,
-            "username": username,
-            "password": "password123",
-            "display_name": username,
-        },
-    )
-    code = await fake_redis.get(f"emailcode:{email}")
-    resp = await client.post("/api/auth/verify-email", json={"email": email, "code": code})
-    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
-    me = await client.get("/api/users/me", headers=headers)
-    return headers, me.json()["id"]
-
-
 def _stub_storage(monkeypatch) -> None:
     # No MinIO in tests — neutralise the network calls.
     monkeypatch.setattr(msg_service, "put_object", lambda *a, **k: None)
@@ -31,8 +12,8 @@ def _stub_storage(monkeypatch) -> None:
     )
 
 
-async def test_profile_fields_roundtrip(client: AsyncClient, fake_redis):
-    headers, uid = await _make_user(client, fake_redis, "p@example.com", "puser")
+async def test_profile_fields_roundtrip(client: AsyncClient, make_user):
+    headers, uid = await make_user("p@example.com", "puser")
 
     patch = await client.patch(
         "/api/users/me",
@@ -46,25 +27,25 @@ async def test_profile_fields_roundtrip(client: AsyncClient, fake_redis):
     assert body["website"] == "example.com"
 
     # Public profile endpoint exposes the same fields.
-    other_h, _ = await _make_user(client, fake_redis, "q@example.com", "quser")
+    other_h, _ = await make_user("q@example.com", "quser")
     prof = await client.get(f"/api/users/{uid}", headers=other_h)
     assert prof.status_code == 200
     assert prof.json()["bio"] == "hello world"
     assert "email" not in prof.json()  # UserProfile is public, no email
 
 
-async def test_profile_unknown_user_404(client: AsyncClient, fake_redis):
-    headers, _ = await _make_user(client, fake_redis, "p@example.com", "puser")
+async def test_profile_unknown_user_404(client: AsyncClient, make_user):
+    headers, _ = await make_user("p@example.com", "puser")
     resp = await client.get(
         "/api/users/00000000-0000-0000-0000-000000000000", headers=headers
     )
     assert resp.status_code == 404
 
 
-async def test_upload_as_file_and_download(client: AsyncClient, fake_redis, monkeypatch):
+async def test_upload_as_file_and_download(client: AsyncClient, make_user, monkeypatch):
     _stub_storage(monkeypatch)
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    _, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
+    a_h, _ = await make_user("a@example.com", "auser")
+    _, b_id = await make_user("b@example.com", "buser")
     cid = (
         await client.post("/api/chats", json={"type": "dm", "user_id": b_id}, headers=a_h)
     ).json()["id"]
@@ -98,10 +79,10 @@ async def test_upload_as_file_and_download(client: AsyncClient, fake_redis, monk
     assert dl.json()["url"].startswith("http")
 
 
-async def test_upload_voice_message(client: AsyncClient, fake_redis, monkeypatch):
+async def test_upload_voice_message(client: AsyncClient, make_user, monkeypatch):
     _stub_storage(monkeypatch)
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    _, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
+    a_h, _ = await make_user("a@example.com", "auser")
+    _, b_id = await make_user("b@example.com", "buser")
     cid = (
         await client.post("/api/chats", json={"type": "dm", "user_id": b_id}, headers=a_h)
     ).json()["id"]
@@ -123,11 +104,11 @@ async def test_upload_voice_message(client: AsyncClient, fake_redis, monkeypatch
     assert msg.json()["type"] == "voice"
 
 
-async def test_download_url_blocks_non_member(client: AsyncClient, fake_redis, monkeypatch):
+async def test_download_url_blocks_non_member(client: AsyncClient, make_user, monkeypatch):
     _stub_storage(monkeypatch)
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    _, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
-    c_h, _ = await _make_user(client, fake_redis, "c@example.com", "cuser")
+    a_h, _ = await make_user("a@example.com", "auser")
+    _, b_id = await make_user("b@example.com", "buser")
+    c_h, _ = await make_user("c@example.com", "cuser")
     cid = (
         await client.post("/api/chats", json={"type": "dm", "user_id": b_id}, headers=a_h)
     ).json()["id"]

@@ -2,7 +2,6 @@ import pytest
 from httpx import AsyncClient
 
 from app.core.config import settings
-from tests.test_posts import _make_user
 
 
 @pytest.fixture
@@ -11,9 +10,9 @@ def admin_email(monkeypatch):
     return "admin@example.com"
 
 
-async def test_admin_access_and_user_moderation(client: AsyncClient, fake_redis, admin_email):
-    a_h, a_id = await _make_user(client, fake_redis, admin_email, "boss")
-    u_h, u_id = await _make_user(client, fake_redis, "au_u@example.com", "regular")
+async def test_admin_access_and_user_moderation(client: AsyncClient, make_user, admin_email):
+    a_h, a_id = await make_user(admin_email, "boss")
+    u_h, u_id = await make_user("au_u@example.com", "regular")
 
     # Admin email was auto-promoted; the regular user is not an admin.
     assert (await client.get("/api/users/me", headers=a_h)).json()["is_admin"] is True
@@ -38,10 +37,10 @@ async def test_admin_access_and_user_moderation(client: AsyncClient, fake_redis,
     assert (await client.delete(f"/api/admin/users/{a_id}", headers=a_h)).status_code == 400
 
 
-async def test_admin_content_moderation_and_reports(client: AsyncClient, fake_redis, admin_email):
-    a_h, _ = await _make_user(client, fake_redis, admin_email, "mod")
-    u_h, _ = await _make_user(client, fake_redis, "ar_u@example.com", "poster")
-    v_h, _ = await _make_user(client, fake_redis, "ar_v@example.com", "watcher")
+async def test_admin_content_moderation_and_reports(client: AsyncClient, make_user, admin_email):
+    a_h, _ = await make_user(admin_email, "mod")
+    u_h, _ = await make_user("ar_u@example.com", "poster")
+    v_h, _ = await make_user("ar_v@example.com", "watcher")
 
     pid = (await client.post("/api/posts", json={"text": "bad post"}, headers=u_h)).json()["id"]
 

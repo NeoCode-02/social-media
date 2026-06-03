@@ -1,28 +1,11 @@
 from httpx import AsyncClient
 
 
-async def _make_user(
-    client: AsyncClient, fake_redis, email: str, username: str
-) -> tuple[dict[str, str], str]:
-    await client.post(
-        "/api/auth/register",
-        json={
-            "email": email,
-            "username": username,
-            "password": "password123",
-            "display_name": username,
-        },
-    )
-    code = await fake_redis.get(f"emailcode:{email}")
-    resp = await client.post("/api/auth/verify-email", json={"email": email, "code": code})
-    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
-    me = await client.get("/api/users/me", headers=headers)
-    return headers, me.json()["id"]
-
-
-async def test_dm_create_send_unread_read(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_dm_create_send_unread_read(
+    client: AsyncClient, fake_redis, make_user
+):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
 
     created = await client.post("/api/chats", json={"type": "dm", "user_id": b_id}, headers=a_h)
     assert created.status_code == 201
@@ -58,10 +41,10 @@ async def test_dm_create_send_unread_read(client: AsyncClient, fake_redis):
     assert chats[0]["unread_count"] == 0
 
 
-async def test_non_member_blocked(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
-    c_h, _ = await _make_user(client, fake_redis, "c@example.com", "cuser")
+async def test_non_member_blocked(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
+    c_h, _ = await make_user("c@example.com", "cuser")
 
     chat = (
         await client.post("/api/chats", json={"type": "dm", "user_id": b_id}, headers=a_h)
@@ -75,10 +58,10 @@ async def test_non_member_blocked(client: AsyncClient, fake_redis):
     assert sneak.status_code == 404
 
 
-async def test_group_create_add_and_leave(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
-    c_h, c_id = await _make_user(client, fake_redis, "c@example.com", "cuser")
+async def test_group_create_add_and_leave(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
+    c_h, c_id = await make_user("c@example.com", "cuser")
 
     group = await client.post(
         "/api/chats",
@@ -109,9 +92,9 @@ async def test_group_create_add_and_leave(client: AsyncClient, fake_redis):
     assert (await client.get(f"/api/chats/{gid}", headers=c_h)).status_code == 404
 
 
-async def test_edit_and_delete_message(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_edit_and_delete_message(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
     chat = (
         await client.post("/api/chats", json={"type": "dm", "user_id": b_id}, headers=a_h)
     ).json()
@@ -137,9 +120,9 @@ async def test_edit_and_delete_message(client: AsyncClient, fake_redis):
     assert deleted.json()["content"] is None
 
 
-async def test_message_pagination_is_ordered(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_message_pagination_is_ordered(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
     cid = (
         await client.post("/api/chats", json={"type": "dm", "user_id": b_id}, headers=a_h)
     ).json()["id"]

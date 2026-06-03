@@ -1,11 +1,11 @@
-import { ImageIcon, Loader2, X } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 
 import { createPost, uploadPostAttachment } from '@/api/posts'
 import type { Attachment, Post } from '@/api/types'
+import { AttachmentList } from '@/components/AttachmentList'
+import { AttachmentPicker } from '@/components/AttachmentPicker'
 import { Avatar } from '@/components/Avatar'
 import { apiError } from '@/lib/error'
-import { isImage, isVideo } from '@/lib/utils'
 import { useAuth } from '@/store/auth'
 
 const MAX_ATTACHMENTS = 4
@@ -25,13 +25,13 @@ export function PostComposer({ parentId, placeholder, autoFocus, onPosted }: Pro
   const [uploading, setUploading] = useState(false)
   const [posting, setPosting] = useState(false)
   const [error, setError] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
 
-  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
+  async function onPick(file: File) {
     setError('')
+    if (attachments.length >= MAX_ATTACHMENTS) {
+      setError(`You can attach up to ${MAX_ATTACHMENTS} items per post.`)
+      return
+    }
     if (file.size > MAX_UPLOAD_BYTES) {
       setError(`"${file.name}" is too large (max 100MB)`)
       return
@@ -39,9 +39,13 @@ export function PostComposer({ parentId, placeholder, autoFocus, onPosted }: Pro
     setUploading(true)
     try {
       const { data } = await uploadPostAttachment(file)
-      setAttachments((a) => [...a, data])
-    } catch (err) {
-      setError(apiError(err))
+      setAttachments((a) => {
+        if (a.length >= MAX_ATTACHMENTS) {
+          setError(`You can attach up to ${MAX_ATTACHMENTS} items per post.`)
+          return a
+        }
+        return [...a, data]
+      })
     } finally {
       setUploading(false)
     }
@@ -87,48 +91,18 @@ export function PostComposer({ parentId, placeholder, autoFocus, onPosted }: Pro
           className="w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-faint"
         />
 
-        {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
-            {attachments.map((a) => (
-              <div key={a.id} className="relative">
-                {isImage(a.mime) ? (
-                  <img src={a.thumbnail_url} alt={a.name} className="h-20 w-20 rounded-xl object-cover" />
-                ) : isVideo(a.mime) ? (
-                  <video src={a.url} className="h-20 w-20 rounded-xl object-cover" />
-                ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-card text-[10px] text-faint">
-                    {a.name.split('.').pop()?.toUpperCase()}
-                  </div>
-                )}
-                <button
-                  onClick={() => setAttachments((list) => list.filter((x) => x.id !== a.id))}
-                  className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        <AttachmentList
+          attachments={attachments}
+          onRemove={(id) => setAttachments((list) => list.filter((a) => a.id !== id))}
+        />
 
         {error && <p className="mb-2 text-xs text-danger">{error}</p>}
 
         <div className="flex items-center justify-between border-t border-border pt-2">
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={attachments.length >= MAX_ATTACHMENTS || uploading}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-accent transition hover:bg-accent/10 disabled:opacity-40"
-            title="Add photo or video"
-          >
-            {uploading ? <Loader2 size={18} className="animate-spin" /> : <ImageIcon size={18} />}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*,video/*"
-            className="hidden"
-            onChange={onPick}
+          <AttachmentPicker
+            disabled={attachments.length >= MAX_ATTACHMENTS}
+            uploading={uploading}
+            onPick={onPick}
           />
           <button
             onClick={submit}

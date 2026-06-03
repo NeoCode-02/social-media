@@ -1,11 +1,9 @@
 from httpx import AsyncClient
 
-from tests.test_posts import _make_user
 
-
-async def test_notifications_like_reply_follow_mention(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "no_a@example.com", "noah")
-    b_h, b_id = await _make_user(client, fake_redis, "no_b@example.com", "bella")
+async def test_notifications_like_reply_follow_mention(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("no_a@example.com", "noah")
+    b_h, b_id = await make_user("no_b@example.com", "bella")
 
     # B follows A (public → instant) → A gets a follow notification.
     await client.post(f"/api/users/{a_id}/follow", headers=b_h)
@@ -33,9 +31,9 @@ async def test_notifications_like_reply_follow_mention(client: AsyncClient, fake
     assert cnt["count"] == 0
 
 
-async def test_like_notification_deduped(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "nd_a@example.com", "ada2")
-    b_h, _ = await _make_user(client, fake_redis, "nd_b@example.com", "ben2")
+async def test_like_notification_deduped(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("nd_a@example.com", "ada2")
+    b_h, _ = await make_user("nd_b@example.com", "ben2")
     pid = (await client.post("/api/posts", json={"text": "x"}, headers=a_h)).json()["id"]
 
     # Like / unlike / like again → still a single like notification.
@@ -48,9 +46,9 @@ async def test_like_notification_deduped(client: AsyncClient, fake_redis):
     assert len(likes) == 1
 
 
-async def test_follow_request_notifications(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "nfr_a@example.com", "priv2")
-    b_h, b_id = await _make_user(client, fake_redis, "nfr_b@example.com", "req2")
+async def test_follow_request_notifications(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("nfr_a@example.com", "priv2")
+    b_h, b_id = await make_user("nfr_b@example.com", "req2")
     await client.patch("/api/users/me", json={"is_private": True}, headers=a_h)
 
     await client.post(f"/api/users/{a_id}/follow", headers=b_h)  # request

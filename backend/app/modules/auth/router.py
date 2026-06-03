@@ -42,14 +42,18 @@ def _clear_refresh_cookie(response: Response) -> None:
     "/register",
     status_code=status.HTTP_201_CREATED,
     response_model=MessageResponse,
-    dependencies=[rate_limit(10, 60, "register")],
+    dependencies=[rate_limit(10, 60, "register", sliding=True)],
 )
 async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)) -> MessageResponse:
     await service.register_user(db, data)
     return MessageResponse(detail="Registered. Check your email for a verification code.")
 
 
-@router.post("/verify-email", response_model=TokenResponse)
+@router.post(
+    "/verify-email",
+    response_model=TokenResponse,
+    dependencies=[rate_limit(20, 60, "verify", sliding=True)],
+)
 async def verify_email(
     data: VerifyEmailRequest, response: Response, db: AsyncSession = Depends(get_db)
 ) -> TokenResponse:
@@ -62,7 +66,7 @@ async def verify_email(
 @router.post(
     "/resend-code",
     response_model=MessageResponse,
-    dependencies=[rate_limit(5, 300, "resend")],
+    dependencies=[rate_limit(5, 300, "resend", sliding=True)],
 )
 async def resend_code(
     data: ResendCodeRequest, db: AsyncSession = Depends(get_db)
@@ -74,7 +78,7 @@ async def resend_code(
 @router.post(
     "/login",
     response_model=TokenResponse,
-    dependencies=[rate_limit(10, 60, "login")],
+    dependencies=[rate_limit(10, 60, "login", sliding=True)],
 )
 async def login(
     data: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)
@@ -90,7 +94,11 @@ async def login(
     return TokenResponse(access_token=access)
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    dependencies=[rate_limit(60, 60, "refresh", sliding=True)],
+)
 async def refresh_tokens(request: Request, response: Response) -> TokenResponse:
     token = request.cookies.get(settings.refresh_cookie_name)
     if not token:

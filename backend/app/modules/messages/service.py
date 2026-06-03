@@ -189,6 +189,10 @@ async def _owned_message(db: AsyncSession, message_id: uuid.UUID, user: User) ->
 async def edit_message(
     db: AsyncSession, message_id: uuid.UUID, user: User, content: str
 ) -> Message:
+    # Note: a banned user can still edit their own past messages here. This
+    # is intentional — the user's content is already in our DB, and a ban
+    # does not retroactively scrub what they have posted. Live sessions are
+    # closed by the realtime watcher's revocation flag (see realtime/router.py).
     message = await _owned_message(db, message_id, user)
     message.content = content
     message.edited_at = _now()

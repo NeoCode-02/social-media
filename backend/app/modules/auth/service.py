@@ -137,9 +137,7 @@ async def issue_tokens(user: User, parent_jti: str | None = None) -> tuple[str, 
         REFRESH_KEY.format(jti=jti), json.dumps(data), ex=settings.refresh_token_ttl_seconds
     )
     # Add JTI to the user's active session set
-    res = redis.sadd(USER_SESSIONS_KEY.format(user_id=user_id_str), jti)
-    if not isinstance(res, int):
-        await res
+    await redis.sadd(USER_SESSIONS_KEY.format(user_id=user_id_str), jti)  # type: ignore[misc]
     return access, refresh
 
 
@@ -181,9 +179,7 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
 
     # Key already claimed atomically above (getdel). Mark this jti as used so a
     # later replay of the same token is detected as reuse.
-    res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
-    if not isinstance(res_srem, int):
-        await res_srem
+    await redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)  # type: ignore[misc]
     # Keep the reuse marker for as long as the stolen token could remain valid,
     # otherwise replay after the marker expires escapes family-revocation.
     await redis.set(f"reused:{jti}", "1", ex=settings.refresh_token_ttl_seconds)
@@ -195,17 +191,14 @@ async def rotate_refresh(refresh_token: str) -> tuple[str, str]:
     await redis.set(
         REFRESH_KEY.format(jti=new_jti), json.dumps(data), ex=settings.refresh_token_ttl_seconds
     )
-    res_sadd = redis.sadd(USER_SESSIONS_KEY.format(user_id=sub), new_jti)
-    if not isinstance(res_sadd, int):
-        await res_sadd
+    await redis.sadd(USER_SESSIONS_KEY.format(user_id=sub), new_jti)  # type: ignore[misc]
     return access, new_refresh
 
 
 async def _revoke_all_for_user(user_id: str) -> None:
     redis = get_redis()
     sessions_key = USER_SESSIONS_KEY.format(user_id=user_id)
-    res_smembers = redis.smembers(sessions_key)
-    jtis = await res_smembers if not isinstance(res_smembers, set) else res_smembers
+    jtis = await redis.smembers(sessions_key)  # type: ignore[misc]
     for jti in jtis:
         await redis.delete(REFRESH_KEY.format(jti=jti))
     await redis.delete(sessions_key)
@@ -243,9 +236,7 @@ async def revoke_refresh(refresh_token: str) -> None:
     sub = payload["sub"]
     redis = get_redis()
     await redis.delete(REFRESH_KEY.format(jti=jti))
-    res_srem = redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)
-    if not isinstance(res_srem, int):
-        await res_srem
+    await redis.srem(USER_SESSIONS_KEY.format(user_id=sub), jti)  # type: ignore[misc]
 
 
 async def get_or_create_oauth_user(
