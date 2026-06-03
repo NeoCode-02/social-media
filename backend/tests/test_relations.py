@@ -1,16 +1,14 @@
 from httpx import AsyncClient
 
-from tests.test_posts import _make_user
-
 
 async def _global_ids(client: AsyncClient, headers) -> set[str]:
     page = (await client.get("/api/posts/global?limit=50", headers=headers)).json()
     return {p["id"] for p in page["posts"]}
 
 
-async def test_block_is_bidirectional_and_guards(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "bl_a@example.com", "blocka")
-    b_h, b_id = await _make_user(client, fake_redis, "bl_b@example.com", "blockb")
+async def test_block_is_bidirectional_and_guards(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("bl_a@example.com", "blocka")
+    b_h, b_id = await make_user("bl_b@example.com", "blockb")
     pa = (await client.post("/api/posts", json={"text": "A post"}, headers=a_h)).json()["id"]
     pb = (await client.post("/api/posts", json={"text": "B post"}, headers=b_h)).json()["id"]
 
@@ -44,9 +42,9 @@ async def test_block_is_bidirectional_and_guards(client: AsyncClient, fake_redis
     assert pb in await _global_ids(client, a_h)
 
 
-async def test_mute_hides_feed_one_way(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "mu_a@example.com", "mutea")
-    c_h, c_id = await _make_user(client, fake_redis, "mu_c@example.com", "mutec")
+async def test_mute_hides_feed_one_way(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("mu_a@example.com", "mutea")
+    c_h, c_id = await make_user("mu_c@example.com", "mutec")
     pa = (await client.post("/api/posts", json={"text": "A post"}, headers=a_h)).json()["id"]
     pc = (await client.post("/api/posts", json={"text": "C post"}, headers=c_h)).json()["id"]
 

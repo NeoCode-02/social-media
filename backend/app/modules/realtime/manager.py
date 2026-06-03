@@ -35,7 +35,19 @@ manager = ConnectionManager()
 
 
 async def pubsub_listener() -> None:
-    """Single global listener per process, receiving all user events and routing locally."""
+    """Single global listener per process, receiving all user events and routing locally.
+
+    Scaling notes:
+      - Each API process subscribes once and fans out to its own locals,
+        so the Redis pubsub fan-out is O(N_processes) per user, not O(N_users).
+      - At >~1k concurrent users per node, the `psubscribe user:*` pattern
+        subscription competes with keyspace notifications; shard the channel
+        space (e.g. `user:{shard}:{id}` where shard ∈ 0..15) and run one
+        listener per shard on each node to keep per-connection memory bounded.
+      - For multi-region, run a Redis replica per region and have the
+        application connect to the nearest — `pubsub` is fire-and-forget
+        so cross-region gaps are acceptable for chat/presence.
+    """
     while True:
         pubsub = get_redis().pubsub()
         try:

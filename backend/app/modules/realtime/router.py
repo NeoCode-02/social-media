@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -5,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
 from app.core.db import SessionLocal
+from app.core.redis import get_redis
 from app.modules.auth.service import verify_ws_ticket
 from app.modules.chats.models import ChatMember
 from app.modules.messages.models import Message
@@ -13,6 +15,15 @@ from app.modules.realtime.manager import manager
 from app.modules.users.models import User
 
 router = APIRouter(tags=["realtime"])
+
+
+# Redis key set when an admin bans/deletes a user so live sockets are kicked
+# out within seconds, not only on next (re)connect. Cleared on logout. 24h
+# TTL is plenty — a ban lives until an admin undoes it.
+_REVOKED_KEY = "user_revoked:{user_id}"
+
+# How often the connection checks the revoked flag. Cheap (one Redis GET).
+_REVOKE_CHECK_INTERVAL_S = 5
 
 
 async def _authenticate(ticket: str) -> uuid.UUID | None:
@@ -30,6 +41,10 @@ async def _authenticate(ticket: str) -> uuid.UUID | None:
     return user_id
 
 
+async def _is_revoked(user_id: uuid.UUID) -> bool:
+    return bool(await get_redis().exists(_REVOKED_KEY.format(user_id=user_id)))
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, ticket: str = Query(...)) -> None:
     user_id = await _authenticate(ticket)
@@ -42,6 +57,24 @@ async def websocket_endpoint(websocket: WebSocket, ticket: str = Query(...)) -> 
         async with SessionLocal() as db:
             await events.publish_presence(db, user_id, "online")
 
+    # Background revoker: wakes every few seconds, checks the Redis revocation
+    # flag, and closes the socket if the user was banned mid-session.
+    revoke_task: asyncio.Task[None] | None = None
+
+    async def _watch_revocation() -> None:
+        try:
+            while True:
+                await asyncio.sleep(_REVOKE_CHECK_INTERVAL_S)
+                if await _is_revoked(user_id):
+                    # 4403 is a custom app-level close code; FastAPI clients
+                    # see it as a normal close with reason.
+                    await websocket.close(code=4403)
+                    return
+        except (asyncio.CancelledError, Exception):
+            return
+
+    revoke_task = asyncio.create_task(_watch_revocation())
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -49,6 +82,12 @@ async def websocket_endpoint(websocket: WebSocket, ticket: str = Query(...)) -> 
     except WebSocketDisconnect:
         pass
     finally:
+        if revoke_task is not None:
+            revoke_task.cancel()
+            try:
+                await revoke_task
+            except (asyncio.CancelledError, Exception):
+                pass
         manager.disconnect(user_id, websocket)
         if manager.online_count(user_id) == 0:
             async with SessionLocal() as db:
@@ -94,3 +133,11 @@ async def _handle_client_event(user_id: uuid.UUID, data: dict[str, Any]) -> None
             member.last_read_message_id = message_id
             await db.commit()
             await events.publish_read(db, chat_id, user_id, message_id)
+
+
+async def mark_user_revoked(user_id: uuid.UUID, ttl_seconds: int = 60 * 60 * 24) -> None:
+    """Stamp the revocation flag in Redis. The live socket watcher will close
+    the connection within a few seconds. Call with `await` from async endpoints.
+    """
+    await get_redis().set(_REVOKED_KEY.format(user_id=user_id), "1", ex=ttl_seconds)
+

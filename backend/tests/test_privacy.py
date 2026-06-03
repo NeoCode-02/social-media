@@ -1,11 +1,9 @@
 from httpx import AsyncClient
 
-from tests.test_posts import _make_user
 
-
-async def test_private_account_follow_request_flow(client: AsyncClient, fake_redis):
-    pat_h, pat_id = await _make_user(client, fake_redis, "pat@example.com", "pat")
-    quinn_h, quinn_id = await _make_user(client, fake_redis, "quinn@example.com", "quinn")
+async def test_private_account_follow_request_flow(client: AsyncClient, make_user):
+    pat_h, pat_id = await make_user("pat@example.com", "pat")
+    quinn_h, quinn_id = await make_user("quinn@example.com", "quinn")
 
     post = await client.post("/api/posts", json={"text": "secret"}, headers=pat_h)
     pid = post.json()["id"]
@@ -43,9 +41,9 @@ async def test_private_account_follow_request_flow(client: AsyncClient, fake_red
     assert prof["followers_count"] == 1
 
 
-async def test_reject_follow_request(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "ra@example.com", "ralph")
-    b_h, b_id = await _make_user(client, fake_redis, "rb@example.com", "rita")
+async def test_reject_follow_request(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("ra@example.com", "ralph")
+    b_h, b_id = await make_user("rb@example.com", "rita")
     await client.patch("/api/users/me", json={"is_private": True}, headers=a_h)
 
     await client.post(f"/api/users/{a_id}/follow", headers=b_h)
@@ -60,9 +58,9 @@ async def test_reject_follow_request(client: AsyncClient, fake_redis):
     assert prof["follow_state"] == "none" and not prof["can_view_posts"]
 
 
-async def test_post_view_count_dedups(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "va@example.com", "vicky")
-    b_h, _ = await _make_user(client, fake_redis, "vb@example.com", "vince")
+async def test_post_view_count_dedups(client: AsyncClient, make_user):
+    a_h, _ = await make_user("va@example.com", "vicky")
+    b_h, _ = await make_user("vb@example.com", "vince")
     pid = (await client.post("/api/posts", json={"text": "viewed"}, headers=a_h)).json()["id"]
 
     for _ in range(3):  # B opens 3 times = 1 unique view

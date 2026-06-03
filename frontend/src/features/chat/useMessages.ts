@@ -9,6 +9,9 @@ import type { Message } from '@/api/types'
 export function useMessages(chatId: string) {
   const qc = useQueryClient()
   const [loadingOlder, setLoadingOlder] = useState(false)
+  // "Reached the start of history" is per-conversation-view session state,
+  // not server-cached data. Local useState is the right home.
+  const [ended, setEnded] = useState(false)
 
   const query = useQuery({
     queryKey: ['messages', chatId],
@@ -16,15 +19,6 @@ export function useMessages(chatId: string) {
       const { data } = await listMessages(chatId)
       return data.messages.slice().reverse() // newest-first → chronological
     },
-  })
-
-  // "Reached the start of history" flag lives in the cache (not module scope):
-  // survives remounts but is cleared on logout via qc.clear().
-  const { data: ended = false } = useQuery<boolean>({
-    queryKey: ['messages', chatId, 'ended'],
-    queryFn: () => false,
-    enabled: false,
-    initialData: false,
   })
 
   const loadOlder = async () => {
@@ -35,7 +29,7 @@ export function useMessages(chatId: string) {
       const { data } = await listMessages(chatId, current[0].id)
       const older = data.messages.slice().reverse()
       if (older.length === 0) {
-        qc.setQueryData<boolean>(['messages', chatId, 'ended'], true)
+        setEnded(true)
       } else {
         qc.setQueryData<Message[]>(['messages', chatId], [...older, ...current])
       }

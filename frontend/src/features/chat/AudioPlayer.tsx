@@ -1,5 +1,5 @@
 import { Mic, Pause, Play } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn, formatDuration } from '@/lib/utils'
 
@@ -12,12 +12,40 @@ interface Props {
   durationMs?: number | null
 }
 
+const BARS = 28
+
+/**
+ * Tiny deterministic pseudo-waveform. Real PCM would need a worker + decode;
+ * this gives every voice note a consistent visual identity so two notes
+ * never look identical (which a flat line would). Seeded by the URL so the
+ * same recording always shows the same shape.
+ */
+function sparklineHeights(src: string, bars: number): number[] {
+  let seed = 0
+  for (let i = 0; i < src.length; i++) seed = (seed * 31 + src.charCodeAt(i)) | 0
+  const out: number[] = []
+  for (let i = 0; i < bars; i++) {
+    // Mulberry32-like single-step
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = seed
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    const r = ((t ^ (t >>> 14)) >>> 0) / 0xffffffff
+    // Shape: stronger in the middle, taper at edges (typical voice energy).
+    const bell = 1 - Math.abs((i - bars / 2) / (bars / 2))
+    out.push(0.25 + 0.75 * r * (0.4 + 0.6 * bell))
+  }
+  return out
+}
+
 export function AudioPlayer({ src, mine, voice = false, name, durationMs }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [progress, setProgress] = useState(0) // 0..1
   const [elapsedMs, setElapsedMs] = useState(0)
   const [totalMs, setTotalMs] = useState(durationMs ?? 0)
+
+  const heights = useMemo(() => sparklineHeights(src, BARS), [src])
 
   useEffect(() => {
     const a = audioRef.current
@@ -64,12 +92,17 @@ export function AudioPlayer({ src, mine, voice = false, name, durationMs }: Prop
     a.currentTime = ratio * a.duration
   }
 
-  const fill = mine ? 'bg-accentink' : 'bg-accent'
-  const track = mine ? 'bg-accentink/25' : 'bg-border'
+  const fillStyle = mine
+    ? { background: 'var(--color-accentink)' }
+    : { background: 'var(--color-accent)' }
+  const dimStyle = mine
+    ? { background: 'color-mix(in oklab, var(--color-accentink) 28%, transparent)' }
+    : { background: 'var(--color-border)' }
   const timeLabel = formatDuration(elapsedMs || totalMs)
+  const playheadIdx = Math.min(BARS - 1, Math.floor(progress * BARS))
 
   return (
-    <div className={cn('flex items-center gap-3', voice ? 'min-w-[180px]' : 'min-w-[200px]')}>
+    <div className={cn('flex items-center gap-3', voice ? 'min-w-[180px]' : 'min-w-[220px]')}>
       <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
       <button
         onClick={toggle}
@@ -87,9 +120,19 @@ export function AudioPlayer({ src, mine, voice = false, name, durationMs }: Prop
           {voice && <Mic size={13} className="shrink-0 opacity-60" />}
           <div
             onClick={seek}
-            className={cn('h-1.5 flex-1 cursor-pointer overflow-hidden rounded-full', track)}
+            className="relative flex h-6 flex-1 cursor-pointer items-center"
+            title={`${Math.round(progress * 100)}%`}
           >
-            <div className={cn('h-full rounded-full', fill)} style={{ width: `${progress * 100}%` }} />
+            {heights.map((h, i) => (
+              <span
+                key={i}
+                className="mx-[1px] flex-1 rounded-sm transition-colors"
+                style={{
+                  height: `${Math.max(18, h * 100)}%`,
+                  ...(i <= playheadIdx ? fillStyle : dimStyle),
+                }}
+              />
+            ))}
           </div>
           <span className="shrink-0 text-[10px] tabular-nums opacity-70">{timeLabel}</span>
         </div>

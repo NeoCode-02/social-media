@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { getWsTicket } from '@/api/auth'
-import type { Chat, Message } from '@/api/types'
+import type { Chat, Message, NotificationPage } from '@/api/types'
 import { prependToTimeline } from '@/features/feed/postCache'
 import { useRealtimeStore } from '@/store/realtime'
 import { wsClient } from './ws'
@@ -55,9 +55,31 @@ export function useRealtime(): void {
         case 'post.new':
           prependToTimeline(qc, ev.post)
           break
-        case 'notification.new':
-          qc.invalidateQueries({ queryKey: ['notifications'] })
+        case 'notification.new': {
+          // Optimistic: prepend to the list AND bump the unread badge —
+          // no invalidation round-trip. The 60s interval still refetches
+          // to catch up on anything we missed.
+          qc.setQueryData<{ pages: NotificationPage[]; pageParams: unknown[] } | undefined>(
+            ['notifications'],
+            (old) => {
+              if (!old || old.pages.length === 0) return old
+              const first = old.pages[0]
+              return {
+                ...old,
+                pages: [
+                  {
+                    ...first,
+                    notifications: [ev.notification, ...first.notifications],
+                    unread_count: first.unread_count + 1,
+                  },
+                  ...old.pages.slice(1),
+                ],
+              }
+            },
+          )
+          qc.setQueryData<number>(['notifications', 'unread'], (n) => (n ?? 0) + 1)
           break
+        }
         case 'typing': {
           setTyping(ev.chat_id, ev.user_id, ev.is_typing)
           const key = `${ev.chat_id}:${ev.user_id}`

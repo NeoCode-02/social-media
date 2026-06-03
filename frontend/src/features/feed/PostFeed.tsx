@@ -1,8 +1,14 @@
 import { Loader2 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import type { Post } from '@/api/types'
 import { PostCard } from './PostCard'
+
+interface EmptyAction {
+  label: string
+  to: string
+}
 
 interface Props {
   posts: Post[]
@@ -11,10 +17,20 @@ interface Props {
   loadingMore: boolean
   onLoadMore: () => void
   emptyText?: string
+  emptyAction?: EmptyAction
 }
 
-export function PostFeed({ posts, isLoading, hasMore, loadingMore, onLoadMore, emptyText }: Props) {
+export function PostFeed({
+  posts,
+  isLoading,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  emptyText,
+  emptyAction,
+}: Props) {
   const sentinel = useRef<HTMLDivElement>(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (!hasMore) return
@@ -40,8 +56,16 @@ export function PostFeed({ posts, isLoading, hasMore, loadingMore, onLoadMore, e
 
   if (posts.length === 0) {
     return (
-      <div className="px-4 py-16 text-center text-sm text-faint">
-        {emptyText ?? 'Nothing here yet.'}
+      <div className="flex flex-col items-center gap-3 px-4 py-16 text-center text-sm text-faint">
+        <p>{emptyText ?? 'Nothing here yet.'}</p>
+        {emptyAction && (
+          <button
+            onClick={() => navigate(emptyAction.to)}
+            className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-accentink transition hover:brightness-105"
+          >
+            {emptyAction.label}
+          </button>
+        )}
       </div>
     )
   }

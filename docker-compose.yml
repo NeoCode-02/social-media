@@ -1,11 +1,13 @@
 name: social-media
 
 # Shared env for the API and worker (in-container hostnames).
+# Secrets (SECRET_KEY, S3 keys, SMTP creds) MUST come from a local .env file
+# or the host environment — they are intentionally not committed here. Copy
+# .env.example.backend to .env.backend and fill in the values before `compose up`.
 x-backend-env: &backend-env
   DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/social_media
   REDIS_URL: redis://redis:6379/0
   CORS_ORIGINS: http://localhost:5173
-  SECRET_KEY: dev-insecure-secret-change-me-in-production-0123456789
   SMTP_HOST: mailpit
   SMTP_PORT: "1025"
   S3_ENDPOINT_URL: http://minio:9000
@@ -91,6 +93,8 @@ services:
         condition: service_healthy
     environment:
       <<: *backend-env
+    env_file:
+      - .env.backend
     ports:
       - '8000:8000'
     volumes:
@@ -104,6 +108,8 @@ services:
         condition: service_healthy
     environment:
       <<: *backend-env
+    env_file:
+      - .env.backend
     volumes:
       - ./backend:/app
     command: arq app.worker.WorkerSettings

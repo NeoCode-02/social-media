@@ -4,27 +4,8 @@ import app.modules.messages.service as msg_service
 import app.modules.posts.router as posts_router
 
 
-async def _make_user(
-    client: AsyncClient, fake_redis, email: str, username: str
-) -> tuple[dict[str, str], str]:
-    await client.post(
-        "/api/auth/register",
-        json={
-            "email": email,
-            "username": username,
-            "password": "password123",
-            "display_name": username,
-        },
-    )
-    code = await fake_redis.get(f"emailcode:{email}")
-    resp = await client.post("/api/auth/verify-email", json={"email": email, "code": code})
-    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
-    me = await client.get("/api/users/me", headers=headers)
-    return headers, me.json()["id"]
-
-
-async def test_create_get_delete_post(client: AsyncClient, fake_redis):
-    h, uid = await _make_user(client, fake_redis, "a@example.com", "auser")
+async def test_create_get_delete_post(client: AsyncClient, make_user):
+    h, uid = await make_user("a@example.com", "auser")
     created = await client.post("/api/posts", json={"text": "hello feed"}, headers=h)
     assert created.status_code == 201
     post = created.json()
@@ -44,17 +25,17 @@ async def test_create_get_delete_post(client: AsyncClient, fake_redis):
     assert (await client.get(f"/api/posts/{pid}", headers=h)).status_code == 404
 
 
-async def test_delete_others_post_forbidden(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, _ = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_delete_others_post_forbidden(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, _ = await make_user("b@example.com", "buser")
     pid = (await client.post("/api/posts", json={"text": "mine"}, headers=a_h)).json()["id"]
     assert (await client.delete(f"/api/posts/{pid}", headers=b_h)).status_code == 403
 
 
-async def test_timeline_follow_gating(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
-    c_h, c_id = await _make_user(client, fake_redis, "c@example.com", "cuser")
+async def test_timeline_follow_gating(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
+    c_h, c_id = await make_user("c@example.com", "cuser")
 
     await client.post("/api/posts", json={"text": "from B"}, headers=b_h)
     await client.post("/api/posts", json={"text": "from C"}, headers=c_h)
@@ -74,9 +55,9 @@ async def test_timeline_follow_gating(client: AsyncClient, fake_redis):
     assert c_id  # silence unused
 
 
-async def test_like_unlike(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, _ = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_like_unlike(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, _ = await make_user("b@example.com", "buser")
     pid = (await client.post("/api/posts", json={"text": "like me"}, headers=a_h)).json()["id"]
 
     assert (await client.post(f"/api/posts/{pid}/like", headers=b_h)).status_code == 204
@@ -93,9 +74,9 @@ async def test_like_unlike(client: AsyncClient, fake_redis):
     assert after["like_count"] == 0 and after["liked_by_me"] is False
 
 
-async def test_replies(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, _ = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_replies(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, _ = await make_user("b@example.com", "buser")
     pid = (await client.post("/api/posts", json={"text": "parent"}, headers=a_h)).json()["id"]
 
     r = await client.post(
@@ -115,9 +96,9 @@ async def test_replies(client: AsyncClient, fake_redis):
     assert "a reply" not in own
 
 
-async def test_repost(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_repost(client: AsyncClient, make_user):
+    a_h, _ = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
     pid = (await client.post("/api/posts", json={"text": "repost me"}, headers=a_h)).json()["id"]
 
     assert (await client.post(f"/api/posts/{pid}/repost", headers=b_h)).status_code == 204
@@ -133,9 +114,9 @@ async def test_repost(client: AsyncClient, fake_redis):
     assert after["repost_count"] == 0 and after["reposted_by_me"] is False
 
 
-async def test_follow_rules_and_profile_counts(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "a@example.com", "auser")
-    b_h, b_id = await _make_user(client, fake_redis, "b@example.com", "buser")
+async def test_follow_rules_and_profile_counts(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("a@example.com", "auser")
+    b_h, b_id = await make_user("b@example.com", "buser")
 
     assert (await client.post(f"/api/users/{a_id}/follow", headers=a_h)).status_code == 400  # self
     assert (
@@ -159,12 +140,12 @@ async def test_follow_rules_and_profile_counts(client: AsyncClient, fake_redis):
     assert b_id in [u["id"] for u in following]
 
 
-async def test_post_attachment_and_download(client: AsyncClient, fake_redis, monkeypatch):
+async def test_post_attachment_and_download(client: AsyncClient, make_user, monkeypatch):
     monkeypatch.setattr(msg_service, "put_object", lambda *a, **k: None)
     monkeypatch.setattr(
         posts_router, "presigned_get_url", lambda key, name=None: f"http://signed/{key}"
     )
-    h, _ = await _make_user(client, fake_redis, "a@example.com", "auser")
+    h, _ = await make_user("a@example.com", "auser")
 
     up = await client.post(
         "/api/posts/attachments",

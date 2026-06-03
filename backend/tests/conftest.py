@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 
 import fakeredis.aioredis
 import pytest
@@ -50,3 +50,32 @@ async def client(
         yield ac
 
     app.dependency_overrides.clear()
+
+
+# Shared test helper: register a user, verify email, return (auth_headers, user_id).
+# Tests that previously had their own _make_user can request this fixture and
+# call it with whatever email/username they need.
+MakeUser = Callable[[str, str], Awaitable[tuple[dict[str, str], str]]]
+
+
+@pytest.fixture
+def make_user(
+    client: AsyncClient, fake_redis: fakeredis.aioredis.FakeRedis
+) -> MakeUser:
+    async def _impl(email: str, username: str) -> tuple[dict[str, str], str]:
+        await client.post(
+            "/api/auth/register",
+            json={
+                "email": email,
+                "username": username,
+                "password": "password123",
+                "display_name": username,
+            },
+        )
+        code = await fake_redis.get(f"emailcode:{email}")
+        resp = await client.post("/api/auth/verify-email", json={"email": email, "code": code})
+        headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+        me = await client.get("/api/users/me", headers=headers)
+        return headers, me.json()["id"]
+
+    return _impl
