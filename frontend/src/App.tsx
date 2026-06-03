@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 
 import { setOnAuthFail } from '@/api/client'
 import { bootstrapSession } from '@/api/session'
+import { getUserByUsername } from '@/api/users'
 import { AppShell } from '@/components/AppShell'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { FullScreenLoader } from '@/components/FullScreenLoader'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { ChatLayout } from '@/features/chat/ChatLayout'
 import { Conversation } from '@/features/chat/Conversation'
@@ -21,6 +23,28 @@ import { LoginPage } from '@/pages/LoginPage'
 import { RegisterPage } from '@/pages/RegisterPage'
 import { VerifyPage } from '@/pages/VerifyPage'
 import { useAuth } from '@/store/auth'
+
+function UsernameRedirect() {
+  // /u/by-username/:username — resolves a username to a user id, then
+  // redirects to the canonical /u/:userId. Used as a fallback for mention
+  // links that haven't been resolved to an id yet.
+  const { username = '' } = useParams()
+  const navigate = useNavigate()
+  useEffect(() => {
+    let cancelled = false
+    void getUserByUsername(username)
+      .then((r) => {
+        if (!cancelled) navigate(`/u/${r.data.id}`, { replace: true })
+      })
+      .catch(() => {
+        if (!cancelled) navigate('/feed', { replace: true })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [username, navigate])
+  return <FullScreenLoader />
+}
 
 function App() {
   const clear = useAuth((s) => s.clear)
@@ -47,6 +71,7 @@ function App() {
             <Route path="tag/:tag" element={<HashtagPage />} />
             <Route path="post/:postId" element={<PostThread />} />
             <Route path="u/:userId" element={<ProfilePage />} />
+            <Route path="u/by-username/:username" element={<UsernameRedirect />} />
             <Route element={<ChatLayout />}>
               <Route path="messages" element={<EmptyConversation />} />
               <Route path="c/:chatId" element={<Conversation />} />

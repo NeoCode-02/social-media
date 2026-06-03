@@ -78,9 +78,18 @@ export function NotificationsPage() {
             <Loader2 size={20} className="animate-spin" />
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-6 py-20 text-center text-faint">
+          <div className="flex flex-col items-center gap-3 px-6 py-20 text-center text-faint">
             <Bell size={26} />
             <p className="text-sm">No notifications yet.</p>
+            <p className="max-w-xs text-xs text-muted">
+              Like, reply to, or follow others to see activity here.
+            </p>
+            <button
+              onClick={() => navigate('/explore')}
+              className="mt-1 rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-accentink transition hover:brightness-105"
+            >
+              Find people to follow
+            </button>
           </div>
         ) : (
           <ul>

@@ -1,11 +1,9 @@
 from httpx import AsyncClient
 
-from tests.test_posts import _make_user
 
-
-async def test_edit_post_and_authz(client: AsyncClient, fake_redis):
-    a_h, _ = await _make_user(client, fake_redis, "pe_a@example.com", "peditor")
-    b_h, _ = await _make_user(client, fake_redis, "pe_b@example.com", "pother")
+async def test_edit_post_and_authz(client: AsyncClient, make_user):
+    a_h, _ = await make_user("pe_a@example.com", "peditor")
+    b_h, _ = await make_user("pe_b@example.com", "pother")
 
     pid = (await client.post("/api/posts", json={"text": "first draft"}, headers=a_h)).json()["id"]
 
@@ -21,8 +19,8 @@ async def test_edit_post_and_authz(client: AsyncClient, fake_redis):
     ).status_code == 403
 
 
-async def test_hashtags_search_trending(client: AsyncClient, fake_redis):
-    h, _ = await _make_user(client, fake_redis, "ht@example.com", "tagger")
+async def test_hashtags_search_trending(client: AsyncClient, make_user):
+    h, _ = await make_user("ht@example.com", "tagger")
 
     p1 = (await client.post("/api/posts", json={"text": "go #climate go"}, headers=h)).json()["id"]
     await client.post("/api/posts", json={"text": "more #climate"}, headers=h)
@@ -51,9 +49,9 @@ async def test_hashtags_search_trending(client: AsyncClient, fake_redis):
     assert len(res["posts"]) == 1 and "unrelated" in res["posts"][0]["text"]
 
 
-async def test_lookup_user_by_username(client: AsyncClient, fake_redis):
-    a_h, a_id = await _make_user(client, fake_redis, "lu@example.com", "lookupme")
-    b_h, _ = await _make_user(client, fake_redis, "lu2@example.com", "viewer2")
+async def test_lookup_user_by_username(client: AsyncClient, make_user):
+    a_h, a_id = await make_user("lu@example.com", "lookupme")
+    b_h, _ = await make_user("lu2@example.com", "viewer2")
 
     res = await client.get("/api/users/by-username/lookupme", headers=b_h)
     assert res.status_code == 200 and res.json()["id"] == a_id
