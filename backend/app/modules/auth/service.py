@@ -22,9 +22,15 @@ from app.modules.users.models import OAuthAccount, User
 
 CODE_KEY = "emailcode:{email}"
 RESEND_KEY = "emailcode_sent:{email}"
+ATTEMPTS_KEY = "emailcode_attempts:{email}"
 REFRESH_KEY = "refresh:{jti}"
 USER_SESSIONS_KEY = "user_sessions:{user_id}"
 WS_TICKET_KEY = "wsticket:{ticket}"
+
+# Wrong verification guesses tolerated per email before the code is burned. The
+# 6-digit code is otherwise brute-forceable from a pool of IPs (per-IP rate
+# limiting alone doesn't bound guesses against a single target).
+MAX_VERIFY_ATTEMPTS = 5
 
 
 def _generate_code() -> str:
@@ -36,6 +42,8 @@ async def _store_and_send_code(email: str) -> None:
     code = _generate_code()
     await redis.set(CODE_KEY.format(email=email), code, ex=settings.email_code_ttl_seconds)
     await redis.set(RESEND_KEY.format(email=email), "1", ex=settings.email_code_resend_seconds)
+    # A freshly issued code resets the wrong-guess counter.
+    await redis.delete(ATTEMPTS_KEY.format(email=email))
     await enqueue("send_verification_email", email, code)
 
 
@@ -87,8 +95,19 @@ def _is_admin_email(email: str) -> bool:
 
 async def verify_email(db: AsyncSession, email: str, code: str) -> User:
     redis = get_redis()
-    stored = await redis.get(CODE_KEY.format(email=email))
+    code_key = CODE_KEY.format(email=email)
+    attempts_key = ATTEMPTS_KEY.format(email=email)
+    stored = await redis.get(code_key)
     if stored is None or not secrets.compare_digest(stored, code):
+        # Only a live code can be brute-forced; count wrong guesses against it
+        # and burn it after MAX_VERIFY_ATTEMPTS so a distributed attacker can't
+        # walk the 6-digit space within the code's lifetime.
+        if stored is not None:
+            attempts = await redis.incr(attempts_key)
+            if attempts == 1:
+                await redis.expire(attempts_key, settings.email_code_ttl_seconds)
+            if attempts >= MAX_VERIFY_ATTEMPTS:
+                await redis.delete(code_key, attempts_key)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired code",
@@ -100,7 +119,7 @@ async def verify_email(db: AsyncSession, email: str, code: str) -> User:
     if _is_admin_email(user.email):
         user.is_admin = True
     await db.commit()
-    await redis.delete(CODE_KEY.format(email=email))
+    await redis.delete(code_key, attempts_key)
     return user
 
 

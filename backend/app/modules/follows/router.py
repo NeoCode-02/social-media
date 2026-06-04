@@ -99,16 +99,18 @@ async def unfollow_user(
 @router.get("/{user_id}/followers", response_model=list[UserPublic])
 async def list_followers(
     user_id: uuid.UUID,
-    _: User = Depends(get_current_verified_user),
+    viewer: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[User]:
+    await service.assert_can_view_social(db, viewer, user_id)
     return await service.list_followers(db, user_id)
 
 
 @router.get("/{user_id}/following", response_model=list[UserPublic])
 async def list_following(
     user_id: uuid.UUID,
-    _: User = Depends(get_current_verified_user),
+    viewer: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[User]:
+    await service.assert_can_view_social(db, viewer, user_id)
     return await service.list_following(db, user_id)

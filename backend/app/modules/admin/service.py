@@ -182,7 +182,9 @@ async def list_reports(
         if r.post_id is not None:
             post = await db.get(Post, r.post_id)
             if post is not None:
-                post_read = (await posts_service.build_posts(db, [post], admin))[0]
+                post_read = (
+                    await posts_service.build_posts(db, [post], admin, enforce_visibility=False)
+                )[0]
         target_user = None
         if r.user_id is not None:
             tu = await db.get(User, r.user_id)
