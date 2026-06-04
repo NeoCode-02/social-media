@@ -29,7 +29,9 @@ def upgrade() -> None:
             DELETE FROM notifications n
             WHERE n.type = 'mention'
               AND n.id NOT IN (
-                SELECT MIN(id) FROM notifications
+                -- Postgres has no MIN(uuid) aggregate; the UUIDv7 text form
+                -- sorts chronologically, so MIN over ::text picks the oldest.
+                SELECT MIN(id::text)::uuid FROM notifications
                 WHERE type = 'mention'
                 GROUP BY recipient_id, actor_id, post_id
               )

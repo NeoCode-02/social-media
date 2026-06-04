@@ -1,0 +1,21 @@
+# Local dev override — auto-loaded by `docker compose`. Two fixes so the stack
+# boots cleanly on a developer machine (incl. Windows hosts):
+#
+#   1. Anonymous volume at /app/.venv: the base file bind-mounts ./backend:/app
+#      for hot-reload, which would otherwise shadow the image's Linux virtualenv
+#      with the host's (here, a Windows) .venv. Mounting an anonymous volume on
+#      top keeps the container's own venv intact.
+#
+#   2. The API applies migrations before serving, so the schema exists on first
+#      boot without a manual `alembic upgrade head` step.
+services:
+  api:
+    volumes:
+      - /app/.venv
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  worker:
+    volumes:
+      - /app/.venv

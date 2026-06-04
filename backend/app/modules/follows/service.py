@@ -69,6 +69,22 @@ async def is_following(
     return row is not None and row.status == ACCEPTED
 
 
+async def assert_can_view_social(db: AsyncSession, viewer: User, target_id: uuid.UUID) -> None:
+    """Guard the follower / following lists: 404 for an unknown user, 403 for a
+    block (either direction) or a private account the viewer doesn't follow."""
+    target = await db.get(User, target_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if await relations.blocked_pair(db, viewer.id, target_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
+    if (
+        target.is_private
+        and target.id != viewer.id
+        and not await is_following(db, viewer.id, target_id)
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is private")
+
+
 async def followers_count(db: AsyncSession, user_id: uuid.UUID) -> int:
     q = (
         select(func.count())

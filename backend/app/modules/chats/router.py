@@ -97,8 +97,8 @@ async def mark_read(
     user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
-    await service.mark_read(db, user, chat_id, data.last_read_message_id)
-    await events.publish_read(db, chat_id, user.id, data.last_read_message_id)
+    effective = await service.mark_read(db, user, chat_id, data.last_read_message_id)
+    await events.publish_read(db, chat_id, user.id, effective)
 
 
 @router.get("/{chat_id}/messages", response_model=MessagePage)

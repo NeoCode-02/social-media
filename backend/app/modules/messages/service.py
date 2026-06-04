@@ -24,6 +24,36 @@ from app.modules.users.models import User
 MAX_PAGE = 50
 MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024
 
+# MIME types object storage may serve inline. The media bucket is public, so
+# anything else — notably text/html and image/svg+xml, which execute script
+# when opened directly from the bucket origin — is stored and served as an
+# opaque octet-stream download, defusing stored-XSS via uploads. Raster images
+# are re-encoded to WEBP upstream, so they always land in this set.
+SAFE_INLINE_MIMES = {
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "video/mp4",
+    "video/webm",
+    "video/ogg",
+    "video/quicktime",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/ogg",
+    "audio/wav",
+    "audio/webm",
+    "audio/mp4",
+    "audio/aac",
+    "audio/x-m4a",
+}
+
+
+def _safe_storage_mime(mime: str) -> str:
+    """Content-Type to store/serve with: pass known-inline-safe types through,
+    coerce everything else to a non-rendering download."""
+    return mime if mime in SAFE_INLINE_MIMES else "application/octet-stream"
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -48,9 +78,11 @@ def process_blob(
         if thumb:
             thumb_key = f"{prefix}/thumb/{uuid.uuid4().hex}.jpg"
             put_object(thumb_key, thumb, "image/jpeg")
+    # Never let the client's Content-Type drive what the public bucket serves.
+    mime = _safe_storage_mime(mime)
     put_object(key, data, mime)
-    # Return the *effective* mime/size of the stored bytes (compression may have
-    # changed both) so the DB row matches the object, not the upload.
+    # Return the *effective* mime/size of the stored bytes (compression and the
+    # safe-type coercion may have changed both) so the DB row matches the object.
     return {
         "storage_key": key,
         "thumbnail_key": thumb_key,

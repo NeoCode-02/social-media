@@ -1,3 +1,4 @@
+import hashlib
 from functools import lru_cache
 
 from pydantic import field_validator
@@ -97,6 +98,13 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() in {"production", "prod"}
+
+    @property
+    def session_secret_key(self) -> str:
+        """Domain-separated key for the cookie session middleware, derived from
+        SECRET_KEY so JWT signing and OAuth-session signing never share key
+        material (rotating one shouldn't silently rotate the other)."""
+        return hashlib.sha256(f"{self.secret_key}:session".encode()).hexdigest()
 
     @field_validator("secret_key")
     @classmethod

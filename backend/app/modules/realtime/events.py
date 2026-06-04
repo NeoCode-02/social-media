@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis
 from app.modules.chats.models import ChatMember
-from app.modules.follows.models import Follow
+from app.modules.follows.models import ACCEPTED, Follow
 from app.modules.messages.schemas import MessageRead
 from app.modules.posts.schemas import PostRead
 
@@ -105,8 +105,16 @@ async def publish_post_new(db: AsyncSession, post: PostRead) -> None:
     """Notify the author's followers (and the author) of a new top-level post so
     open home timelines can surface it live."""
     author_id = post.author.id
+    # Only *accepted* followers may receive a post live — a pending request to a
+    # private account must not stream its posts before the owner approves.
     followers = list(
-        (await db.scalars(select(Follow.follower_id).where(Follow.followee_id == author_id))).all()
+        (
+            await db.scalars(
+                select(Follow.follower_id).where(
+                    Follow.followee_id == author_id, Follow.status == ACCEPTED
+                )
+            )
+        ).all()
     )
     await _publish(
         [*followers, author_id],

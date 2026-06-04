@@ -250,7 +250,9 @@ async def get_chat(db: AsyncSession, user: User, chat_id: uuid.UUID) -> ChatRead
 
 async def mark_read(
     db: AsyncSession, user: User, chat_id: uuid.UUID, message_id: uuid.UUID
-) -> None:
+) -> uuid.UUID:
+    """Advance the read pointer and return its *effective* value (the stored
+    pointer), so a stale/older ack doesn't broadcast a backwards read receipt."""
     member = await require_member(db, chat_id, user.id)
     message = await db.get(Message, message_id)
     if message is None or message.chat_id != chat_id:
@@ -261,6 +263,8 @@ async def mark_read(
     if current is None or message_id > current:
         member.last_read_message_id = message_id
         await db.commit()
+        return message_id
+    return current
 
 
 async def add_members(
