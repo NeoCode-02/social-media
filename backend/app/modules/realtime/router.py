@@ -1,5 +1,7 @@
 import asyncio
+import time
 import uuid
+from collections import deque
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,6 +26,12 @@ _REVOKED_KEY = "user_revoked:{user_id}"
 
 # How often the connection checks the revoked flag. Cheap (one Redis GET).
 _REVOKE_CHECK_INTERVAL_S = 5
+
+# Per-connection inbound-event throttle (typing / read acks). Bounds the
+# server-side fan-out a single socket can trigger; excess events are dropped,
+# the connection is left open.
+WS_MAX_EVENTS = 60
+WS_EVENT_WINDOW_S = 10.0
 
 
 async def _authenticate(ticket: str) -> uuid.UUID | None:
@@ -75,9 +83,16 @@ async def websocket_endpoint(websocket: WebSocket, ticket: str = Query(...)) -> 
 
     revoke_task = asyncio.create_task(_watch_revocation())
 
+    event_times: deque[float] = deque()
     try:
         while True:
             data = await websocket.receive_json()
+            now = time.monotonic()
+            while event_times and event_times[0] <= now - WS_EVENT_WINDOW_S:
+                event_times.popleft()
+            if len(event_times) >= WS_MAX_EVENTS:
+                continue  # over budget → drop this event, keep the socket open
+            event_times.append(now)
             await _handle_client_event(user_id, data)
     except WebSocketDisconnect:
         pass

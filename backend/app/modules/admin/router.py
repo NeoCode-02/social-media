@@ -114,7 +114,7 @@ async def delete_post(
     db: AsyncSession = Depends(get_db),
 ) -> PostRead:
     post = await posts_service.admin_delete_post(db, post_id)
-    return (await posts_service.build_posts(db, [post], admin))[0]
+    return (await posts_service.build_posts(db, [post], admin, enforce_visibility=False))[0]
 
 
 @router.get("/reports", response_model=ReportPage)

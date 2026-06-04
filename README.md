@@ -85,7 +85,7 @@ Mailpit UI (http://localhost:8025).
 | GET    | `/api/chats/{id}/attachments/{aid}/download-url` | signed link that forces a download |
 | GET    | `/api/users/{id}`                 | another user's public profile (bio, etc.) |
 
-Attachments cover images, video, audio, voice notes, and documents (≤15 MB). Images
+Attachments cover images, video, audio, voice notes, and documents (≤100 MB). Images
 open in an in-app lightbox; video/audio play inline; voice notes use a compact player;
 anything else renders as a downloadable card. `as_file` forces the file card even for
 images. DMs and groups only (channels are deferred). Messages use time-ordered **UUIDv7**

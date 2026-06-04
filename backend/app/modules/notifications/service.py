@@ -14,6 +14,9 @@ from app.modules.users.models import User
 from app.modules.users.schemas import UserPublic
 
 MAX_PAGE = 50
+# Cap mention notifications per post so one post can't fan out to dozens of
+# writes + realtime pushes.
+MAX_MENTION_NOTIFICATIONS = 10
 
 
 async def _preview(db: AsyncSession, post_id: uuid.UUID | None) -> str | None:
@@ -95,7 +98,7 @@ async def notify_mentions(
     db: AsyncSession, text: str | None, actor: User, post_id: uuid.UUID
 ) -> None:
     """Notify every mentioned (existing) user, excluding the author."""
-    usernames = extract_mentions(text)
+    usernames = extract_mentions(text)[:MAX_MENTION_NOTIFICATIONS]
     if not usernames:
         return
     rows = (

@@ -18,6 +18,25 @@ from app.modules.users.models import User
 MAX_PAGE = 50
 
 
+def _accepted_followees(viewer_id: uuid.UUID):
+    """Subquery of the ids ``viewer_id`` accepted-follows."""
+    return select(Follow.followee_id).where(
+        Follow.follower_id == viewer_id, Follow.status == ACCEPTED
+    )
+
+
+def _visible_authors_clause(viewer: User):
+    """SQL predicate: a post is visible when its author is public, is the
+    viewer, or the viewer is an accepted follower. The batched-query analogue
+    of ``can_view_posts`` — apply it (with a ``join(User)``) to every feed,
+    search, hashtag and reply query so private accounts never leak."""
+    return or_(
+        User.is_private.is_(False),
+        Post.author_id == viewer.id,
+        Post.author_id.in_(_accepted_followees(viewer.id)),
+    )
+
+
 async def _sync_hashtags(db: AsyncSession, post_id: uuid.UUID, text: str | None) -> None:
     """Replace a post's hashtag rows with the tags currently in its text."""
     await db.execute(sa.delete(PostHashtag).where(PostHashtag.post_id == post_id))
@@ -242,7 +261,13 @@ async def _viewer_flags(
     return liked, reposted
 
 
-async def build_posts(db: AsyncSession, posts: list[Post], viewer: User) -> list[PostRead]:
+async def build_posts(
+    db: AsyncSession,
+    posts: list[Post],
+    viewer: User,
+    *,
+    enforce_visibility: bool = True,
+) -> list[PostRead]:
     if not posts:
         return []
 
@@ -255,9 +280,21 @@ async def build_posts(db: AsyncSession, posts: list[Post], viewer: User) -> list
     }
     embeds: list[Post] = []
     if embed_ids:
-        embeds = list(
-            (await db.scalars(select(Post).where(Post.id.in_(embed_ids)))).all()
-        )
+        if enforce_visibility:
+            # Don't embed a quoted/replied-to post the viewer isn't allowed to
+            # see (private author they don't follow, or a blocked/muted author);
+            # the referencing post stays, the embed just resolves to None.
+            eq = (
+                select(Post)
+                .join(User, User.id == Post.author_id)
+                .where(Post.id.in_(embed_ids), _visible_authors_clause(viewer))
+            )
+            excluded = await relations.feed_excluded_ids(db, viewer.id)
+            if excluded:
+                eq = eq.where(Post.author_id.notin_(excluded))
+        else:
+            eq = select(Post).where(Post.id.in_(embed_ids))
+        embeds = list((await db.scalars(eq)).all())
 
     by_id = {p.id: p for p in [*posts, *embeds]}
     all_ids = list(by_id.keys())
@@ -284,6 +321,13 @@ async def build_posts(db: AsyncSession, posts: list[Post], viewer: User) -> list
 
 async def get_post(db: AsyncSession, post_id: uuid.UUID, viewer: User) -> PostRead:
     post = await _alive(db, post_id)
+    # A single post must enforce the same visibility as the profile feed:
+    # blocks (either direction) and private accounts you don't follow.
+    if await relations.blocked_pair(db, viewer.id, post.author_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
+    author = await db.get(User, post.author_id)
+    if author is None or not await can_view_posts(db, author, viewer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is private")
     await record_view(db, viewer.id, post_id)
     return (await build_posts(db, [post], viewer))[0]
 
@@ -327,9 +371,11 @@ async def global_timeline(
     limit = max(1, min(limit, MAX_PAGE))
     q = (
         select(Post)
+        .join(User, User.id == Post.author_id)
         .where(
             Post.deleted_at.is_(None),
             Post.parent_id.is_(None),
+            _visible_authors_clause(viewer),
         )
         .order_by(Post.id.desc())
         .limit(limit + 1)
@@ -389,10 +435,23 @@ async def list_replies(
     limit: int,
     after: uuid.UUID | None,
 ) -> PostPage:
+    # The thread is only viewable if its root post is — same gate as a profile
+    # feed (blocks + private accounts you don't follow).
+    parent = await _alive(db, post_id)
+    if await relations.blocked_pair(db, viewer.id, parent.author_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unavailable")
+    parent_author = await db.get(User, parent.author_id)
+    if parent_author is None or not await can_view_posts(db, parent_author, viewer):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is private")
     limit = max(1, min(limit, MAX_PAGE))
     q = (
         select(Post)
-        .where(Post.parent_id == post_id, Post.deleted_at.is_(None))
+        .join(User, User.id == Post.author_id)
+        .where(
+            Post.parent_id == post_id,
+            Post.deleted_at.is_(None),
+            _visible_authors_clause(viewer),
+        )
         .order_by(Post.id.asc())
         .limit(limit + 1)
     )
@@ -430,7 +489,12 @@ async def admin_list_posts(
     if before is not None:
         query = query.where(Post.id < before)
     rows, cursor = _page(list((await db.scalars(query)).all()), limit)
-    return PostPage(posts=await build_posts(db, rows, viewer), next_cursor=cursor)
+    # Moderation view: an admin sees every post (and every embed) regardless of
+    # author privacy / blocks.
+    return PostPage(
+        posts=await build_posts(db, rows, viewer, enforce_visibility=False),
+        next_cursor=cursor,
+    )
 
 
 async def search_posts(
@@ -441,10 +505,12 @@ async def search_posts(
     pattern = f"%{escape_like(q)}%"
     query = (
         select(Post)
+        .join(User, User.id == Post.author_id)
         .where(
             Post.deleted_at.is_(None),
             Post.parent_id.is_(None),
             Post.text.ilike(pattern, escape="\\"),
+            _visible_authors_clause(viewer),
         )
         .order_by(Post.id.desc())
         .limit(limit + 1)
@@ -466,10 +532,12 @@ async def hashtag_feed(
     tagged = select(PostHashtag.post_id).where(PostHashtag.tag == tag.lower())
     query = (
         select(Post)
+        .join(User, User.id == Post.author_id)
         .where(
             Post.id.in_(tagged),
             Post.deleted_at.is_(None),
             Post.parent_id.is_(None),
+            _visible_authors_clause(viewer),
         )
         .order_by(Post.id.desc())
         .limit(limit + 1)
