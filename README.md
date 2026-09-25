@@ -130,6 +130,7 @@ post ids are time-ordered **UUIDv7** cursors.
 | GET    | `/api/posts/search?q=`                 | full-text post search (trigram-indexed)       |
 | GET    | `/api/posts/hashtag/{tag}`             | posts for a hashtag                           |
 | GET    | `/api/posts/trending/hashtags`         | trending tags (7-day window)                  |
+| POST   | `/api/posts/attachments`               | upload post media (reuses the chat pipeline)  |
 | GET    | `/api/users/{id}/posts`                | a user's posts (private → 403 unless follower)|
 | GET    | `/api/users/search?q=`                 | people search (block-filtered)                |
 | POST/DELETE | `/api/users/{id}/follow`          | follow/request (private) / unfollow           |
@@ -147,6 +148,10 @@ Notifications fire on like, reply, follow, follow-request, follow-accept and @me
 (self-actions skipped, like/follow deduped, suppressed across a block) and are pushed
 live as `notification.new`. Hashtags (`#tag`) and mentions (`@user`) are parsed from
 post text; mentions notify the mentioned user.
+
+A reply is a post with `parent_id`; a repost is a post with `repost_of_id` (no text = bare
+repost, with text = quote). New top-level posts publish `post.new` to the author's followers
+over the per-user realtime channels, so open timelines update live.
 
 #### Admin / moderation
 
@@ -211,7 +216,7 @@ bio/location/website, a profile editor with avatar cropping, and a public **feed
   it appears in structured JSON logs and in 500 error bodies for tracing.
 - **Structured logging**: one JSON line per request (`method`, `path`, `status`, `duration_ms`,
   `request_id`). Configure level via `DEBUG`.
-- **Rate limits** (Redis fixed-window, per client IP): auth (login/register/resend),
+- **Rate limits** (Redis, per client IP; sliding window on auth routes, fixed window elsewhere): auth (login/register/resend),
   chat create, message send, attachment upload, user search, post create, post upload, follow.
 - **Security headers**: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`.
 - **Global error handler**: unhandled exceptions → `500 {detail, request_id}` (logged with traceback).
@@ -225,36 +230,6 @@ Build the API image from `backend/Dockerfile`; run `alembic upgrade head` on dep
 run the API and a separate `arq app.worker.WorkerSettings` worker. Serve the frontend
 `npm run build` output behind a CDN/static host with `/api` + `/ws` proxied to the API.
 
-## Twitter half — feed, posts, follows
+## Later phases
 
-The public-feed half reuses the same auth, users, media, and realtime fan-out. Posts use
-the same time-ordered **UUIDv7** ids/cursor as messages; like/reply/repost counts are
-**computed on read** in batched queries (no denormalized-counter drift).
-
-| Method | Path                              | Purpose                                   |
-| ------ | --------------------------------- | ----------------------------------------- |
-| GET    | `/api/posts`                      | home timeline (followees + you, cursor)   |
-| POST   | `/api/posts`                      | create (`text`,`attachment_ids`,`parent_id`,`repost_of_id`) |
-| GET    | `/api/posts/{id}`                 | single post (counts + your like/repost)   |
-| DELETE | `/api/posts/{id}`                 | soft-delete your post                     |
-| GET    | `/api/posts/{id}/replies`         | replies (cursor)                          |
-| POST/DELETE | `/api/posts/{id}/like`       | like / unlike                             |
-| POST/DELETE | `/api/posts/{id}/repost`     | repost / un-repost                        |
-| POST   | `/api/posts/attachments`          | upload post media (reuses the chat pipeline) |
-| GET    | `/api/users/{id}/posts`           | a user's profile feed                     |
-| POST/DELETE | `/api/users/{id}/follow`     | follow / unfollow                         |
-| GET    | `/api/users/{id}/followers` · `/following` | follow graph                     |
-
-A reply is a post with `parent_id`; a repost is a post with `repost_of_id` (no text = bare
-repost, with text = quote). New top-level posts publish `post.new` to the author's followers
-over the per-user realtime channels, so open timelines update live.
-
-The **SPA** adds an icon rail switching between **Home** (feed: composer, infinite timeline,
-like/reply/repost, image/video/voice posts, threads) and **Messages** (the chat half), plus
-profile pages with follow/unfollow and a user's posts.
-
-### Later phases
-Channels (broadcast chat) can reuse `posts` + `chats`; trending/hashtags, quote-post UI,
-notifications, and mobile-responsive layout are still open.
-
-See `~/.claude/plans/i-want-to-do-woolly-unicorn.md` for the full plan.
+Channels (broadcast chat, reusing `posts` + `chats`) and a mobile-responsive layout are still open.
